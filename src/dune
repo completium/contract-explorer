@@ -3,5 +3,5 @@
     (pps ppx_deriving.std ppx_deriving_yojson)
   )
   (modules bctojson)
-  (libraries ppx_deriving yojson ppx_deriving_yojson.runtime)
+  (libraries curly ppx_deriving yojson ppx_deriving_yojson.runtime)
   (name     bctojson))

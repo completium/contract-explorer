@@ -28,4 +28,4 @@ clean:
 	rm -fr bctojson.exe
 
 build-deps:
-	opam install dune.1.10.0 ppx_deriving ppx_deriving_yojson
+	opam install dune.1.10.0 curly ppx_deriving ppx_deriving_yojson
