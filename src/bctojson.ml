@@ -197,12 +197,16 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Wri
         explore false contract_key c block)
       else 
         explore first contract_key c block
-    | None -> print_endline "\nNO MORE CONTRACT"
+    | None -> (
+      print_endline "\nNO MORE CONTRACT";
+      if first then
+        Writer.write_contract previous_contract
+    )
     
 end
 
 let main () =
-  let contract_key = "KT1CJuwyRn4C8nAn9E4eGbKHaPAeT4GfVkAW" in
+  let contract_key = "KT1XiVP9DXaGJ2tr3C88kqUkyGyBACgz2SXX" in
   let module TzInfo : BCinfo = struct 
     let getIp () = "localhost"
     let getPort () = "8732"
@@ -217,9 +221,10 @@ let main () =
   let module Block = Make_TzBlock (Url) (Rpc) in
   let module Contract = Make_TzContract (Url) (Block) (Rpc) in
   let module Explorer = Make_ContractExplorer (Block) (Contract) (Writer) in
-  match Contract.mk "" "head" contract_key with
-  | Some c -> Explorer.explore true contract_key c { hash=""; previous="head" }
-  | _ -> ();
+  let init_block = "head" in
+  match Contract.mk "" init_block contract_key with
+  | Some c -> Explorer.explore true contract_key c { hash=""; previous=init_block }
+  | _ -> print_endline ("Contract not found in "^init_block);
   Writer.close_logs()
 
 let _ = main ()
