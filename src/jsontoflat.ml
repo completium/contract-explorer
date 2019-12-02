@@ -12,13 +12,24 @@ type ordered =
 | Obytes of bytes
 [@@deriving yojson, show {with_path = false}]
 
+type mvalue =
+| Mordered of ordered
+| Mbool of bool
+| MUnit
+| Moption of mvalue option
+| Mpair of (mvalue * mvalue)
+| Munion of (mvalue * mvalue)
+| Mlist of mvalue list
+| Mmap of (ordered * mvalue) list
+| Mset of ordered list
+[@@deriving yojson, show {with_path = false}]
+
 type storage_field_value =
 | Sordered of ordered
 | Sbool of bool
 | Sunit
 | Soption of storage_field_value option
-| Sor of (storage_field * storage_field)
-| Spair of (storage_field * storage_field)
+| Sor of (storage_field_value * storage_field_value)
 | Srecord of storage_field list
 | Scontainer of (ordered * storage_field) list
 [@@deriving yojson, show {with_path = false}]
