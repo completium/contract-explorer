@@ -13,12 +13,12 @@ type ordered =
 [@@deriving yojson, show {with_path = false}]
 
 type storage_field =
-| Ordered of ordered
-| Mbool of bool
-| Munit
-| Option of storage_field option
-| Union of (storage_field * storage_field)
-| Fcontainer of (ordered * storage_field) list
+| Sordered of ordered
+| Sbool of bool
+| Sunit
+| Soption of storage_field option
+| Sunion of (storage_field * storage_field)
+| Scontainer of (ordered * storage_field) list
 [@@deriving yojson, show {with_path = false}]
 
 type storage = storage_field list
