@@ -107,7 +107,7 @@ end) : Writer = struct
   let open_logs () = 
     out_contracts := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/contracts.json");
     out_ops := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/ops.json");
-    out_contract_info := open_out_gen [Open_creat] 0o640 (Dirs.path^"/"^Dirs.contract^"/contract_info.json")
+    out_contract_info := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/contract_info.json")
 
   let close_logs () = 
     close_out !out_contracts;
