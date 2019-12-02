@@ -55,6 +55,7 @@ type contract_info = {
   storage_type : string;
   entries : string list;
 }
+[@@deriving yojson, show {with_path = false}]
 
 type contract = {
   timestamp : string;
@@ -91,6 +92,7 @@ module type Writer = sig
   val open_logs : unit -> unit
   val close_logs : unit -> unit
   val write_contract : contract -> unit
+  val write_contract_info : contract_info -> unit
   val write_op : op -> unit
 end
 
@@ -100,14 +102,17 @@ module Make_Writer (Dirs : sig
 end) : Writer = struct
   let out_contracts = ref stdout
   let out_ops = ref stdout
+  let out_contract_info = ref stdout
 
   let open_logs () = 
-    out_contracts := open_out_gen [Open_append] 0 (Dirs.path^"/"^Dirs.contract^"/contracts.json");
-    out_ops := open_out_gen [Open_append] 0 (Dirs.path^"/"^Dirs.contract^"/ops.json")
+    out_contracts := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/contracts.json");
+    out_ops := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/ops.json");
+    out_contract_info := open_out_gen [Open_creat] 0o640 (Dirs.path^"/"^Dirs.contract^"/contract_info.json")
 
   let close_logs () = 
     close_out !out_contracts;
-    close_out !out_ops
+    close_out !out_ops;
+    close_out !out_contract_info
 
   let print_json channel json = 
     let str = Yojson.Safe.to_string json in
@@ -119,6 +124,9 @@ end) : Writer = struct
 
   let write_op op = 
     print_json !out_ops (op_to_yojson op)
+
+  let write_contract_info st = 
+    print_json !out_contract_info (contract_info_to_yojson st)
   
 end 
 
@@ -244,8 +252,8 @@ let main () =
   let init_block = "head" in
   match Contract.mk "" init_block contract_key with
   | Some c -> 
-    let json = Rpc.url_to_json (Url.getContract "head" contract_key) in
-      print_endline (Safe.to_string json);
+    let cinfo = Contract.mk_data contract_key in
+    Writer.write_contract_info cinfo;
     Explorer.explore true contract_key c { hash=""; previous=init_block }
   | _ -> print_endline ("Contract not found in "^init_block);
   Writer.close_logs()
