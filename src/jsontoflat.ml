@@ -64,7 +64,7 @@ type sftype =
 | Sbool
 | Sunit
 | Soption of sftype option
-| Srecord of named_sftype
+| Srecord of named_sftype list
 | Scontainer of (ordered_sftype * sftype)
 [@@deriving yojson, show {with_path = false}]
 and named_sftype = string option * sftype
