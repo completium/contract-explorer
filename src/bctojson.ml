@@ -103,7 +103,7 @@ let cmp_contracts c1 c2 =
   (c1.storage = c2.storage) &&
   (c1.balance = c2.balance)
 
-(* fabrics ------------------------------------------------------------------*)
+(* factories ----------------------------------------------------------------*)
 
 module type Url = sig
   val getBlock    : string -> string
