@@ -1,7 +1,7 @@
-(executable
+(executables
   (preprocess
     (pps ppx_deriving.std ppx_deriving_yojson)
   )
-  (modules bctojson)
+  (modules bctojson jsontoflat)
   (libraries curly ppx_deriving yojson ppx_deriving_yojson.runtime)
-  (name     bctojson))
+  (names     bctojson jsontoflat))
