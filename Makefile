@@ -4,13 +4,14 @@
 .PHONY: all merlin build build-deps run clean
 
 # --------------------------------------------------------------------
-all: build bctojson merlin
+all: build exec merlin
 
 build:
 	@dune build
 
-bctojson:
-	$(MAKE) -C src bctojson.exe
+exec:
+	$(MAKE) -C src all
+	ln -fs _build/default/src/jsontoflat.exe jsontoflat.exe
 	ln -fs _build/default/src/bctojson.exe bctojson.exe
 
 merlin:
@@ -25,7 +26,7 @@ install:
 clean:
 	@dune clean
 	$(MAKE) -C src clean
-	rm -fr bctojson.exe
+	rm -fr bctojson.exe jsontoflat.exe
 
 build-deps:
 	opam install dune.1.10.0 curly ppx_deriving ppx_deriving_yojson
