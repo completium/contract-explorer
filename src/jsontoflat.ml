@@ -52,22 +52,28 @@ type value =
 | Vmultiple of (elt * value) list
 [@@deriving yojson, show {with_path = false}]
 
-type ordered_stype =
+type ordered_sftype =
 | Sint
 | Snat
 | Sstr
 | Sbytes
 [@@deriving yojson, show {with_path = false}]
 
-type stype =
-| Sordered of ordered_stype
+type sftype =
+| Sordered of ordered_sftype
 | Sbool
 | Sunit
-| Soption of stype option
-| Srecord of storage list
-| Scontainer of (ordered_stype * stype)
+| Soption of sftype option
+| Srecord of named_sftype
+| Scontainer of (ordered_sftype * sftype)
 [@@deriving yojson, show {with_path = false}]
-and storage = (string option * stype) list
+and named_sftype = string option * sftype
+[@@deriving yojson, show {with_path = false}]
+
+type sfield = sftype * value
+[@@deriving yojson, show {with_path = false}]
+
+type storage = sfield list
 [@@deriving yojson, show {with_path = false}]
 
 let main () =
