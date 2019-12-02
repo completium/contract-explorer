@@ -12,13 +12,19 @@ type ordered =
 | Obytes of bytes
 [@@deriving yojson, show {with_path = false}]
 
-type storage_field =
+type storage_field_value =
 | Sordered of ordered
 | Sbool of bool
 | Sunit
 | Soption of storage_field option
 | Sunion of (storage_field * storage_field)
 | Scontainer of (ordered * storage_field) list
+[@@deriving yojson, show {with_path = false}]
+
+type storage_field = {
+    name : string option;
+    value : storage_field_value;
+}
 [@@deriving yojson, show {with_path = false}]
 
 type storage = storage_field list
