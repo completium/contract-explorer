@@ -15,7 +15,7 @@ type ordered =
 type mvalue =
 | Mordered of ordered
 | Mbool of bool
-| MUnit
+| Munit
 | Moption of mvalue option
 | Mpair of (mvalue * mvalue)
 | Munion of (mvalue * mvalue)
