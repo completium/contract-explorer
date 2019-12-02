@@ -16,12 +16,13 @@ type storage_field_value =
 | Sordered of ordered
 | Sbool of bool
 | Sunit
-| Soption of storage_field option
-| Sunion of (storage_field * storage_field)
+| Soption of storage_field_value option
+| Sor of (storage_field * storage_field)
+| Spair of (storage_field * storage_field)
+| Srecord of storage_field list
 | Scontainer of (ordered * storage_field) list
 [@@deriving yojson, show {with_path = false}]
-
-type storage_field = {
+and storage_field = {
     name : string option;
     value : storage_field_value;
 }
