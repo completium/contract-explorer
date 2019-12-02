@@ -12,10 +12,6 @@ type ordered =
 | Obytes of bytes
 [@@deriving yojson, show {with_path = false}]
 
-type prim =
-|
-[@@deriving yojson, show {with_path = false}]
-
 type storage_field =
 | Ordered of ordered
 | Mbool of bool
@@ -25,8 +21,8 @@ type storage_field =
 | Fcontainer of (ordered * storage_field) list
 [@@deriving yojson, show {with_path = false}]
 
-type storage =
-|
+type storage = storage_field list
+[@@deriving yojson, show {with_path = false}]
 
 let main () =
   let storage = Safe.from_string storage in
