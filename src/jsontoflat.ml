@@ -50,9 +50,9 @@ type elt = string
 
 type value =
 | Vsingle of elt
+| Voption of value option
 | Vmultiple of (elt * value) list
 [@@deriving yojson, show {with_path = false}]
-
 
 type ordered_sftype =
 | Sint
@@ -66,11 +66,11 @@ type sftype =
 | Sordered of ordered_sftype
 | Sbool
 | Sunit
-| Soption of sftype option
+| Soption of sftype
 | Srecord of named_sftype list
 | Scontainer of (ordered_sftype * sftype)
 [@@deriving yojson, show {with_path = false}]
-and named_sftype = string option * sftype
+and named_sftype = string * sftype
 [@@deriving yojson, show {with_path = false}]
 
 type sfield = sftype * value
