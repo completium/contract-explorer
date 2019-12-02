@@ -51,6 +51,11 @@ type block_data = {
 }
 [@@deriving yojson, show {with_path = false}]
 
+type contract_info = {
+  storage_type : string;
+  entries : string list;
+}
+
 type contract = {
   timestamp : string;
   storage : string;
@@ -77,6 +82,7 @@ end
 
 module type Contract = sig
   val mk : string -> string -> string -> contract option
+  val mk_data : string -> contract_info
 end
 
 (* output module ------------------------------------------------------------*)
@@ -171,6 +177,20 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
       })
     with _ -> None
 
+    let json_to_storage_type json = 
+      json |> member "script" |> member "code" |> to_list |> List.fold_left (fun acc code ->
+        let prim = code |> member "prim" |> to_string in
+        if compare prim "storage" = 0 then
+          code |> member "args" |> to_list |> fun l -> List.nth l 0 |> Safe.to_string
+        else acc
+      ) ""
+
+    let mk_data chash = 
+      let json = Rpc.url_to_json (Url.getContract "head" chash) in {
+        storage_type = json_to_storage_type json;
+        entries = [];
+      }
+
 end
 
 (* Contract Explorer --------------------------------------------------------*)
@@ -206,7 +226,7 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Wri
 end
 
 let main () =
-  let contract_key = "KT1XiVP9DXaGJ2tr3C88kqUkyGyBACgz2SXX" in
+  let contract_key = "KT1BoLiscRVVgBkvFSRrbDTJkDfpzCDkBKa2" in
   let module TzInfo : BCinfo = struct 
     let getIp () = "localhost"
     let getPort () = "8732"
@@ -223,7 +243,10 @@ let main () =
   let module Explorer = Make_ContractExplorer (Block) (Contract) (Writer) in
   let init_block = "head" in
   match Contract.mk "" init_block contract_key with
-  | Some c -> Explorer.explore true contract_key c { hash=""; previous=init_block }
+  | Some c -> 
+    let json = Rpc.url_to_json (Url.getContract "head" contract_key) in
+      print_endline (Safe.to_string json);
+    Explorer.explore true contract_key c { hash=""; previous=init_block }
   | _ -> print_endline ("Contract not found in "^init_block);
   Writer.close_logs()
 
