@@ -8,10 +8,10 @@ let storage_type = "{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\
 (* Michelson value ----------------------------------------------------------*)
 
 type ordered =
-| Oint of int
-| Onat of int
-| Ostr of string
-| Obytes of bytes
+| Mint of int
+| Mnat of int
+| Mstr of string
+| Mbytes of bytes
 [@@deriving yojson, show {with_path = false}]
 
 type mvalue =
@@ -20,6 +20,7 @@ type mvalue =
 | Munit
 | Moption of mvalue option
 | Mpair of (mvalue * mvalue)
+| Melt of (mvalue * mvalue)
 | Munion of (mvalue * mvalue)
 | Mlist of mvalue list
 | Mmap of (ordered * mvalue) list
@@ -145,12 +146,45 @@ let rec json_to_mtype (json : Safe.t) : amtype =
         | _ -> raise InvalidPrim
     else raise Not_found
 
+let rec json_to_mvalue json : mvalue =
+    print_endline (Safe.to_string json);
+    try let _l = to_list json in Munit
+    with _ ->
+    let keys= json |> keys in
+    if List.mem "prim" keys then
+        let prim = json |> member "prim" |> to_string in
+        match prim with
+        | "Pair" -> begin
+            match json |> member "args" |> to_list with
+            | arg1 :: arg2 :: [] -> Mpair (json_to_mvalue arg1, json_to_mvalue arg2)
+            | _ -> raise (ExpectedNbargs 2) end
+        | "Elt" -> begin
+            match json |> member "args" |> to_list with
+            | arg1 :: arg2 :: [] -> Melt (json_to_mvalue arg1, json_to_mvalue arg2)
+            | _ -> raise (ExpectedNbargs 2) end
+        | "Unit" -> Munit
+        | "False" -> Mbool false
+        | "True" -> Mbool true
+        | _ -> Munit
+    else if List.mem "int" keys then
+        let i = json |> member "int" |> to_string |> int_of_string in
+        Mordered (Mint i)
+    else if List.mem "string" keys then
+        let s = json |> member "string" |> to_string in
+        Mordered (Mstr s)
+    else if List.mem "bytes" keys then
+        let s = json |> member "bytes" |> to_string |> Bytes.unsafe_of_string in
+        Mordered (Mbytes s)
+    else Munit
+
 (*---------------------------------------------------------------------------*)
 
 let main () =
   let storage = Safe.from_string storage in
   let storage_type = Safe.from_string storage_type in
   print_endline (Safe.to_string storage);
+  print_endline "";
+  Format.printf "%a" pp_mvalue (json_to_mvalue storage);
   print_endline "";
   Format.printf "%a" pp_amtype (json_to_mtype storage_type);
   print_endline "";
