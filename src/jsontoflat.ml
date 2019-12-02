@@ -43,22 +43,31 @@ type mtype =
 and amtype = string option * mtype
 [@@deriving yojson, show {with_path = false}]
 
-type value =
-| Sordered of ordered
-| Sbool of bool
-| Sunit
-| Soption of value option
-| Sor of (value * value)
-| Srecord of value list
-| Scontainer of (ordered * storage_field) list
-[@@deriving yojson, show {with_path = false}]
-and storage_field = {
-    name : string option;
-    value : value;
-}
+
+type elt = string
 [@@deriving yojson, show {with_path = false}]
 
-type storage = storage_field list
+type value =
+| Vsingle of elt
+| Vmultiple of (elt * value) list
+[@@deriving yojson, show {with_path = false}]
+
+type ordered_stype =
+| Sint
+| Snat
+| Sstr
+| Sbytes
+[@@deriving yojson, show {with_path = false}]
+
+type stype =
+| Sordered of ordered_stype
+| Sbool
+| Sunit
+| Soption of stype option
+| Srecord of storage list
+| Scontainer of (ordered_stype * stype)
+[@@deriving yojson, show {with_path = false}]
+and storage = (string option * stype) list
 [@@deriving yojson, show {with_path = false}]
 
 let main () =
