@@ -59,6 +59,8 @@ type ordered_sftype =
 | Sbytes
 [@@deriving yojson, show {with_path = false}]
 
+(* flat storage type --------------------------------------------------------*)
+
 type sftype =
 | Sordered of ordered_sftype
 | Sbool
