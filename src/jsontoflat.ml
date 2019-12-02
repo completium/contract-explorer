@@ -43,6 +43,7 @@ type mtype =
 and amtype = string option * mtype
 [@@deriving yojson, show {with_path = false}]
 
+(* flat storage type --------------------------------------------------------*)
 
 type elt = string
 [@@deriving yojson, show {with_path = false}]
@@ -52,7 +53,6 @@ type value =
 | Vmultiple of (elt * value) list
 [@@deriving yojson, show {with_path = false}]
 
-(* flat storage type --------------------------------------------------------*)
 
 type ordered_sftype =
 | Sint
