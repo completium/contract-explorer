@@ -43,6 +43,7 @@ type mtype =
 | Tunit
 | Tlist of mtype
 | Tmap of ordered_mtype * mtype
+| Tbigmap of ordered_mtype * mtype
 | Tset of ordered_mtype
 [@@deriving yojson, show {with_path = false}]
 and amtype = string option * mtype
@@ -64,6 +65,7 @@ let rec mtype_to_string = function
 | Tunit -> "UNIT"
 | Tlist t -> "LIST of ("^(mtype_to_string t)^")"
 | Tmap (t1,t2) -> "MAP of ("^(mtype_to_string (Tordered t1))^") to ("^(mtype_to_string t2)^")"
+| Tbigmap (t1,t2) -> "BIG MAP of ("^(mtype_to_string (Tordered t1))^") to ("^(mtype_to_string t2)^")"
 | Tset t -> "SET of ("^(mtype_to_string (Tordered t))^")"
 | _ as t -> Format.printf "%a" pp_mtype t;raise Not_found
 and amtype_to_string amt =
@@ -136,7 +138,14 @@ let rec json_to_mtype (json : Safe.t) : amtype =
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] -> (get_annot keys json, Tpair (json_to_mtype arg1, json_to_mtype arg2))
             | _ -> raise (ExpectedNbargs 2) end
-        | "big_map" | "map" -> begin
+        | "big_map" -> begin
+            match json |> member "args" |> to_list with
+            | arg1 :: arg2 :: [] ->
+                (get_annot keys json, Tbigmap (
+                    amtype_to_ordered (json_to_mtype arg1),
+                    snd (json_to_mtype arg2)))
+            | _ -> raise (ExpectedNbargs 2) end
+        | "map" -> begin
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] ->
                 (get_annot keys json, Tmap (
@@ -195,6 +204,13 @@ let rec json_to_mvalue json : mvalue =
         let s = json |> member "bytes" |> to_string |> Bytes.unsafe_of_string in
         Mordered (Mbytes s)
     else raise Not_found
+
+(* Mk flat storage-----------------------------------------------------------*)
+
+let rec mk_storage stype svalue : storage =
+match stype, svalue with
+| (_, Tpair (t1,t2)), Mpair (v1,v2) -> (mk_storage t1 v1)@(mk_storage t2 v2)
+| (_, _) -> []
 
 (*---------------------------------------------------------------------------*)
 
