@@ -23,8 +23,6 @@ type mvalue =
 | Melt of (mvalue * mvalue)
 | Munion of (mvalue * mvalue)
 | Mlist of mvalue list
-| Mmap of (ordered * mvalue) list
-| Mset of ordered list
 [@@deriving yojson, show {with_path = false}]
 
 (* Michelson type -----------------------------------------------------------*)
@@ -167,10 +165,9 @@ let rec json_to_mtype (json : Safe.t) : amtype =
     else raise Not_found
 
 let rec json_to_mvalue json : mvalue =
-    print_endline (Safe.to_string json);
     try
-        let _l = to_list json in
-        Munit
+        let l = to_list json in
+        Mlist (List.map json_to_mvalue l)
     with _ ->
     let keys= json |> keys in
     if List.mem "prim" keys then
@@ -197,7 +194,7 @@ let rec json_to_mvalue json : mvalue =
     else if List.mem "bytes" keys then
         let s = json |> member "bytes" |> to_string |> Bytes.unsafe_of_string in
         Mordered (Mbytes s)
-    else Munit
+    else raise Not_found
 
 (*---------------------------------------------------------------------------*)
 
