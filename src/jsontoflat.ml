@@ -65,7 +65,7 @@ let rec mtype_to_string = function
 | Tunit -> "UNIT"
 | Tlist t -> "LIST of ("^(mtype_to_string t)^")"
 | Tmap (t1,t2) -> "MAP of ("^(mtype_to_string (Tordered t1))^") to ("^(mtype_to_string t2)^")"
-| Tbigmap (t1,t2) -> "BIG MAP of ("^(mtype_to_string (Tordered t1))^") to ("^(mtype_to_string t2)^")"
+| Tbigmap (t1,t2) -> "BIG_MAP of ("^(mtype_to_string (Tordered t1))^") to ("^(mtype_to_string t2)^")"
 | Tset t -> "SET of ("^(mtype_to_string (Tordered t))^")"
 | _ as t -> Format.printf "%a" pp_mtype t;raise Not_found
 and amtype_to_string amt =
@@ -78,37 +78,21 @@ let types = fold_amtype [] amt in
 
 (* flat storage type --------------------------------------------------------*)
 
-type elt = string
-[@@deriving yojson, show {with_path = false}]
-
-type value =
-| Vsingle of elt
-| Voption of value option
-| Vmultiple of (elt * value) list
-[@@deriving yojson, show {with_path = false}]
-
-type ordered_sftype =
-| Sint
-| Snat
-| Sstr
-| Sbytes
-[@@deriving yojson, show {with_path = false}]
-
-type sftype =
-| Sordered of ordered_sftype
-| Sbool
+type sfield =
+| Sint of int
+| Snat of int
+| Sstr of string
+| Sbytes of bytes
+| Sbool of bool
 | Sunit
-| Soption of sftype
-| Srecord of named_sftype list
-| Scontainer of (ordered_sftype * sftype)
+| Soption of sfield
+| Srecord of named_sfield list
+| Scontainer of (sfield * named_sfield)
 [@@deriving yojson, show {with_path = false}]
-and named_sftype = string * sftype
-[@@deriving yojson, show {with_path = false}]
-
-type sfield = named_sftype * value
+and named_sfield = string * sfield
 [@@deriving yojson, show {with_path = false}]
 
-type storage = sfield list
+type storage = named_sfield list
 [@@deriving yojson, show {with_path = false}]
 
 (* Conversions --------------------------------------------------------------*)
@@ -210,6 +194,7 @@ let rec json_to_mvalue json : mvalue =
 let rec mk_storage stype svalue : storage =
 match stype, svalue with
 | (_, Tpair (t1,t2)), Mpair (v1,v2) -> (mk_storage t1 v1)@(mk_storage t2 v2)
+| (Some lbl, Tordered Tint), Mordered (Mint i) -> [(lbl,Sint i)]
 | (_, _) -> []
 
 (*---------------------------------------------------------------------------*)
@@ -222,11 +207,15 @@ let main () =
   print_endline "";
   Format.printf "%a" pp_amtype (json_to_mtype storage_type);
   print_endline ""; *)
-  print_endline (amtype_to_string (json_to_mtype storage_type));
+  let svalue = json_to_mvalue storage in
+  let stype = json_to_mtype storage_type in
+  print_endline (amtype_to_string stype);
   print_endline "";
   print_endline (amtype_to_string (json_to_mtype storage_type2));
   print_endline "";
-  Format.printf "%a" pp_mvalue (json_to_mvalue storage);
+  Format.printf "%a" pp_mvalue svalue;
+  print_endline "";
+  Format.printf "%a" pp_storage (mk_storage stype svalue);
   print_endline ""
 
 let _ = main ()
