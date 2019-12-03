@@ -129,20 +129,15 @@ let rec json_to_mtype (json : Safe.t) : amtype =
             | _ -> raise (ExpectedNbargs 1) end
         | "bool" ->
             (get_annot keys json, Tbool)
-        | "int" ->
-            (get_annot keys json, Tordered Tint)
-        | "nat" ->
-            (get_annot keys json, Tordered Tnat)
-        | "string" ->
-            (get_annot keys json, Tordered Tstr)
-        | "bytes" ->
-            (get_annot keys json, Tordered Tbytes)
+        | "int" -> (get_annot keys json, Tordered Tint)
+        | "nat" -> (get_annot keys json, Tordered Tnat)
+        | "string" -> (get_annot keys json, Tordered Tstr)
+        | "bytes" -> (get_annot keys json, Tordered Tbytes)
         | "option" -> begin
             match json |> member "args" |> to_list with
             | arg :: [] -> (get_annot keys json, Toption (snd (json_to_mtype arg)))
             | _ -> raise (ExpectedNbargs 1) end
-        | "unit" ->
-            (get_annot keys json, Tunit)
+        | "unit" -> (get_annot keys json, Tunit)
         | _ -> raise InvalidPrim
     else raise Not_found
 
