@@ -78,7 +78,7 @@ type sftype =
 and named_sftype = string * sftype
 [@@deriving yojson, show {with_path = false}]
 
-type sfield = sftype * value
+type sfield = named_sftype * value
 [@@deriving yojson, show {with_path = false}]
 
 type storage = sfield list
