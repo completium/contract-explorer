@@ -292,44 +292,6 @@ match stype, svalue with
 
 let lbl_to_str i = function None -> "f"^(string_of_int i) | Some l -> l
 
-(* exception InvalidMtype
-
-let is_bigmap = function
-| Tbigmap _ -> true
-| _ -> false
-
-let rec mvalue_to_sfield t = function
-| Mordered (Mint i) when (not (is_bigmap t)) ->  Fint, Vsingle (string_of_int i)
-| Mordered (Mnat n) -> Fnat, Vsingle (string_of_int n)
-| Mordered (Mstr s) -> Fstr, Vsingle s
-| Mordered (Mbytes b) -> Fbytes, Vsingle b
-| Mbool b -> Fbool, Vsingle (string_of_bool b)
-| Mpair _ as v ->
-    let lv = fold_value [] v in
-    let lt = fold_type [] (None,t) in
-    let ln = List.mapi (fun i (s,t) ->
-        match s with
-        | None -> ("r"^(string_of_int (i+1)),t)
-        | Some s -> (s,t)) lt in
-
-    Srecord (List.map2 (fun (s,t) v -> (s,mvalue_to_sfield t v)) ln lv)
-| Moption (Some v) -> begin
-    match t with
-    | Toption t -> Soption (Some (mvalue_to_sfield t v))
-    | _ -> raise InvalidMtype end
-| Moption None -> Soption None
-| Mlist l -> begin
-    match t with
-    | Tlist t -> Slist (List.map (mvalue_to_sfield t) l)
-    | Tset t -> Sset (List.map (mvalue_to_sfield (Tordered t)) l)
-    | Tmap (t1,t2) -> Smap (List.map (fun v ->
-        match v with
-        | Melt (v1,v2) -> mvalue_to_sfield (Tordered t1) v1, mvalue_to_sfield t2 v2
-        | _ -> Sunit, Sunit) l)
-    | _ -> Sunit end
-| Mordered (Mint _) -> Smap []
-| _ -> Sunit
- *)
 let rec mval_to_sval = function
 | Mordered (Mint i) -> Velt (string_of_int i)
 | Mordered (Mnat n) -> Velt (string_of_int n)
