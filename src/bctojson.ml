@@ -127,9 +127,9 @@ end
 module type Writer = sig
   val open_logs : unit -> unit
   val close_logs : unit -> unit
-  val write_contract : contract -> unit
+  val write_contract : bool -> contract -> unit
   val write_contract_info : contract_info -> unit
-  val write_op : op -> unit
+  val write_op : bool -> op -> unit
 end
 
 module Make_Writer (Dirs : sig
@@ -141,28 +141,37 @@ module Make_Writer (Dirs : sig
   let out_contract_info = ref stdout
 
   let open_logs () =
-    out_contracts := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/contracts.json");
+    out_contracts := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/storages.json");
     out_ops := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/ops.json");
-    out_contract_info := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/contract_info.json")
+    out_contract_info := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/contract_info.json");
+    Printf.fprintf !out_contracts "%s" "[";
+    Printf.fprintf !out_ops "%s" "[";
+    flush !out_contracts;
+    flush !out_ops
 
   let close_logs () =
+    Printf.fprintf !out_contracts "%s" "]";
+    Printf.fprintf !out_ops "%s" "]";
+    flush !out_contracts;
+    flush !out_ops;
     close_out !out_contracts;
     close_out !out_ops;
     close_out !out_contract_info
 
-  let print_json channel json =
+  let print_json first channel json =
+    Printf.fprintf channel "%s" (if first then "" else ",\n");
     let str = Yojson.Safe.to_string json in
-    Printf.fprintf channel "%s" (str^"\n");
+    Printf.fprintf channel "%s" str;
     flush channel
 
-  let write_contract contract =
-    print_json !out_contracts (contract_to_yojson contract)
+  let write_contract first contract =
+    print_json first !out_contracts (contract_to_yojson contract)
 
-  let write_op op =
-    print_json !out_ops (op_to_yojson op)
+  let write_op first op =
+    print_json first !out_ops (op_to_yojson op)
 
   let write_contract_info st =
-    print_json !out_contract_info (contract_info_to_yojson st)
+    print_json true !out_contract_info (contract_info_to_yojson st)
 
 end
 
@@ -242,7 +251,7 @@ end
 
 module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Writer) = struct
 
-  let rec explore first contract_key previous_contract previous_block =
+  let rec explore first firstop contract_key previous_contract previous_block =
     let block = Block.mk_id previous_block.previous in
     (* dump operations *)
     let data = Block.mk_data block.hash in
@@ -250,22 +259,25 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Wri
         let { hash=_; source=src; destination=dst } = op in
         compare src contract_key = 0 || compare dst contract_key = 0
       ) data.operations in
-    if List.length ops > 0 then
-      List.iter (fun op -> Writer.write_op op) ops;
+    let firstop =
+      if List.length ops > 0 then
+        (List.iter (fun op -> Writer.write_op firstop op) ops;
+         false)
+      else firstop in
     print_string ("."); flush stdout;
     match Contract.mk data.timestamp block.hash contract_key with
     | Some c ->
       if not (cmp_contracts previous_contract c) then (
         if first then
-          Writer.write_contract previous_contract;
-        Writer.write_contract c;
-        explore false contract_key c block)
+          Writer.write_contract first previous_contract;
+        Writer.write_contract false c;
+        explore false firstop contract_key c block)
       else
-        explore first contract_key c block
+        explore first firstop contract_key c block
     | None -> (
         print_endline "\nNO MORE CONTRACT";
         if first then
-          Writer.write_contract previous_contract
+          Writer.write_contract first previous_contract
       )
 
 end
@@ -291,13 +303,15 @@ let process contract_key =
   let module Contract = Make_TzContract (Url) (Block) (Rpc) in
   let module Explorer = Make_ContractExplorer (Block) (Contract) (Writer) in
   let init_block = "head" in
+  begin
   match Contract.mk "" init_block contract_key with
   | Some c ->
     let cinfo = Contract.mk_data contract_key in
     Writer.write_contract_info cinfo;
-    Explorer.explore true contract_key c { hash=""; previous=init_block }
-  | _ -> print_endline ("Contract not found in "^init_block);
-    Writer.close_logs()
+    Explorer.explore true true contract_key c { hash=""; previous=init_block }
+  | _ -> print_endline ("Contract not found in "^init_block)
+  end;
+  Writer.close_logs()
 
 let main () =
   let print_version () = print_endline "0.1"; exit 0 in
