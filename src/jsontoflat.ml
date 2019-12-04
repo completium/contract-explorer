@@ -124,7 +124,7 @@ let rec sftype_to_string wp = function
 | Foption t -> with_paren wp ("option of "^(sftype_to_string true t))
 | Flist t -> with_paren wp ("list of "^(sftype_to_string true t))
 | Fmap (t1,t2) -> with_paren wp ("map of "^(sftype_to_string true t1)^" to "^(sftype_to_string true t2))
-| Fbigmap (t1,t2) -> with_paren wp ("map of "^(sftype_to_string true t1)^" to "^(sftype_to_string true t2))
+| Fbigmap (t1,t2) -> with_paren wp ("big map of "^(sftype_to_string true t1)^" to "^(sftype_to_string true t2))
 | Frecord l -> with_paren wp ("record { "^(String.concat "; "(List.map (fun (s,t) -> s^" : "^(sftype_to_string false t)) l))^" }")
 | Fset t -> with_paren wp ("set of "^(sftype_to_string true t))
 | _ -> "unit"
