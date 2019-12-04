@@ -91,6 +91,7 @@ type sftype =
 | Fset of sftype
 | Frecord of (string * sftype) list
 | Fmap of sftype * sftype
+| Fbigmap of sftype * sftype
 [@@deriving yojson, show {with_path = false}]
 
 type sfval =
@@ -123,6 +124,7 @@ let rec sftype_to_string wp = function
 | Foption t -> with_paren wp ("option of "^(sftype_to_string true t))
 | Flist t -> with_paren wp ("list of "^(sftype_to_string true t))
 | Fmap (t1,t2) -> with_paren wp ("map of "^(sftype_to_string true t1)^" to "^(sftype_to_string true t2))
+| Fbigmap (t1,t2) -> with_paren wp ("map of "^(sftype_to_string true t1)^" to "^(sftype_to_string true t2))
 | Frecord l -> with_paren wp ("record { "^(String.concat "; "(List.map (fun (s,t) -> s^" : "^(sftype_to_string false t)) l))^" }")
 | Fset t -> with_paren wp ("set of "^(sftype_to_string true t))
 | _ -> "unit"
@@ -131,8 +133,10 @@ let pp_sftype fmt t = pp_str fmt (sftype_to_string false t)
 
 exception ExpectedPair
 
+let is_big_map = function Fbigmap _ -> true | _ -> false
+
 let rec pp_sfval t fmt = function
-| Velt e -> pp_str fmt e
+| Velt e when (not (is_big_map t)) -> pp_str fmt e
 | Vlist l -> begin
     match t with
     | Foption t ->
@@ -318,6 +322,7 @@ let rec mtyp_to_styp = function
 | Toption t -> Foption (mtyp_to_styp t)
 | Tlist t -> Flist (mtyp_to_styp t)
 | Tmap (t1,t2) -> Fmap (mtyp_to_styp (Tordered t1), mtyp_to_styp t2)
+| Tbigmap (t1,t2) -> Fbigmap (mtyp_to_styp (Tordered t1), mtyp_to_styp t2)
 | Tpair _ as t ->
     let lt = fold_type [] (None,t) in
     let ln = List.mapi (fun i (s,t) ->
