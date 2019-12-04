@@ -362,6 +362,8 @@ let main () =
   print_endline "";
   Format.printf "%a" pp_storage storage; *)
   print_endline "";
-  pp_st Format.std_formatter storage
+  pp_st Format.std_formatter storage;
+  print_endline "";
+  print_endline (Safe.to_string (storage_to_yojson storage))
 
 let _ = main ()
