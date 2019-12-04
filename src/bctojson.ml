@@ -2,24 +2,11 @@ open Yojson
 open Safe
 open Util
 
-(* Options ------------------------------------------------------------------*)
-module type Options = sig
-  val getContractId : unit -> string
-  val setContractId : string -> unit
-  val getAddress    : unit -> string
-  val setAddress    : string -> unit
-  val getPort       : unit -> string
-  val setPort       : string -> unit
-  val getBranch     : unit -> string
-  val setBranch     : string -> unit
-  val getPath       : unit -> string
-  val setPath       : string -> unit
-end
-module MOptions : Options = struct
-  let contractId = ref "KT1BoLiscRVVgBkvFSRrbDTJkDfpzCDkBKa2"
-  let getContractId _ = !contractId
-  let setContractId s = contractId := s
+let version = "0.1"
 
+(* Options ------------------------------------------------------------------*)
+
+module MOptions = struct
   let address = ref "localhost"
   let getAddress _ = !address
   let setAddress s = address := s
@@ -35,6 +22,8 @@ module MOptions : Options = struct
   let path = ref "."
   let getPath _ = !path
   let setPath s = path := s
+
+  let force = ref false
 end
 
 (* Tools --------------------------------------------------------------------*)
@@ -125,11 +114,15 @@ end
 (* output module ------------------------------------------------------------*)
 
 module type Writer = sig
+  val clear : unit -> unit
   val open_logs : unit -> unit
   val close_logs : unit -> unit
+  val write_head : string -> unit
   val write_contract : bool -> contract -> unit
   val write_contract_info : contract_info -> unit
   val write_op : bool -> op -> unit
+  val is_head_exists : unit -> bool
+  val get_head_content : unit -> string
 end
 
 module Make_Writer (Dirs : sig
@@ -140,10 +133,26 @@ module Make_Writer (Dirs : sig
   let out_ops = ref stdout
   let out_contract_info = ref stdout
 
+  let clear () =
+    let rm p =
+      if (Sys.file_exists p)
+      then Sys.remove p
+    in
+    let dir = Dirs.path ^ "/" ^ Dirs.contract in
+    rm (dir ^ "/head.txt");
+    rm (dir ^ "/storages.json");
+    rm (dir ^ "/ops.json");
+    rm (dir ^ "/contract_info.json");
+    if (Sys.file_exists dir)
+    then Unix.rmdir dir
+
   let open_logs () =
-    out_contracts := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/storages.json");
-    out_ops := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/ops.json");
-    out_contract_info := open_out_gen [Open_creat;Open_append] 0o640 (Dirs.path^"/"^Dirs.contract^"/contract_info.json");
+    let dir = Dirs.path ^ "/" ^ Dirs.contract in
+    if not (Sys.file_exists dir)
+    then Unix.mkdir dir 0o700;
+    out_contracts := open_out_gen [Open_creat;Open_append] 0o640 (dir ^ "/storages.json");
+    out_ops := open_out_gen [Open_creat;Open_append] 0o640 (dir ^ "/ops.json");
+    out_contract_info := open_out_gen [Open_creat;Open_append] 0o640 (dir ^ "/contract_info.json");
     Printf.fprintf !out_contracts "%s" "[";
     Printf.fprintf !out_ops "%s" "[";
     flush !out_contracts;
@@ -164,6 +173,15 @@ module Make_Writer (Dirs : sig
     Printf.fprintf channel "%s" str;
     flush channel
 
+  let write_head str =
+    let file = Dirs.path ^ "/" ^ Dirs.contract ^ "/head.txt" in
+    if (Sys.file_exists file)
+    then Sys.remove file;
+    let out = ref stdout in
+    out := open_out_gen [Open_creat;Open_append] 0o640 file;
+    Printf.fprintf !out "%s\n" str;
+    close_out !out
+
   let write_contract first contract =
     print_json first !out_contracts (contract_to_yojson contract)
 
@@ -173,6 +191,18 @@ module Make_Writer (Dirs : sig
   let write_contract_info st =
     print_json true !out_contract_info (contract_info_to_yojson st)
 
+  let is_head_exists () =
+    Sys.file_exists (Dirs.path ^ "/" ^ Dirs.contract ^ "/head.txt")
+
+  let get_head_content () =
+    let ic = open_in (Dirs.path ^ "/" ^ Dirs.contract ^ "/head.txt") in
+    try
+      let line = input_line ic in
+      close_in ic;
+      line
+    with e ->
+      close_in_noerr ic;
+      raise e
 end
 
 (* Tezos --------------------------------------------------------------------*)
@@ -187,7 +217,7 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
 
   let mk_id hash =
     let json = Rpc.url_to_json (Url.getBlock hash) in {
-      hash         = hash;
+      hash         = json |> member "hash" |> to_string;
       previous     = json |> member "header" |> member "predecessor" |> to_string;
     }
 
@@ -251,8 +281,11 @@ end
 
 module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Writer) = struct
 
-  let rec explore first firstop contract_key previous_contract previous_block =
+  let rec explore first_explored_block first firstop contract_key previous_contract previous_block fblock =
     let block = Block.mk_id previous_block.previous in
+    (* write first block explored hash *)
+    (if first_explored_block
+     then Writer.write_head block.hash);
     (* dump operations *)
     let data = Block.mk_data block.hash in
     let ops = List.filter(fun op ->
@@ -265,17 +298,21 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Wri
          false)
       else firstop in
     print_string ("."); flush stdout;
-    match Contract.mk data.timestamp block.hash contract_key with
-    | Some c ->
+    match fblock, Contract.mk data.timestamp block.hash contract_key with
+    | Some f, _ when String.equal f block.hash ->
+      Format.printf "\nHEAD BLOCK FOUND@.";
+      if first then
+        Writer.write_contract first previous_contract
+    | _, Some c ->
       if not (cmp_contracts previous_contract c) then (
         if first then
           Writer.write_contract first previous_contract;
         Writer.write_contract false c;
-        explore false firstop contract_key c block)
+        explore false false firstop contract_key c block fblock)
       else
-        explore first firstop contract_key c block
-    | None -> (
-        print_endline "\nNO MORE CONTRACT";
+        explore false first firstop contract_key c block fblock
+    | _, None -> (
+        Format.printf "\nNO MORE CONTRACT@.";
         if first then
           Writer.write_contract first previous_contract
       )
@@ -287,16 +324,28 @@ let process contract_key =
     | "" -> Format.eprintf "no contract"; exit 1
     | _  -> contract_key
   in
-  (* let  = "KT1BoLiscRVVgBkvFSRrbDTJkDfpzCDkBKa2" in *)
+
   let module TzInfo : BCinfo = struct
     let getIp () = MOptions.getAddress()
     let getPort () = MOptions.getPort()
     let getBranch () = MOptions.getBranch()
   end in
   let module Writer = Make_Writer (struct
-      let path = "."
+      let path = MOptions.getPath()
       let contract = contract_key
     end) in
+
+  if !MOptions.force
+  then Writer.clear();
+
+  let fblock =
+    begin
+      if Writer.is_head_exists()
+      then Some (Writer.get_head_content ())
+      else None
+    end
+  in
+
   Writer.open_logs();
   let module Url = Make_TzURL (TzInfo) in
   let module Block = Make_TzBlock (Url) (Rpc) in
@@ -304,18 +353,19 @@ let process contract_key =
   let module Explorer = Make_ContractExplorer (Block) (Contract) (Writer) in
   let init_block = "head" in
   begin
-  match Contract.mk "" init_block contract_key with
-  | Some c ->
-    let cinfo = Contract.mk_data contract_key in
-    Writer.write_contract_info cinfo;
-    Explorer.explore true true contract_key c { hash=""; previous=init_block }
-  | _ -> print_endline ("Contract not found in "^init_block)
+    match Contract.mk "" init_block contract_key with
+    | Some c ->
+      let cinfo = Contract.mk_data contract_key in
+      Writer.write_contract_info cinfo;
+      Explorer.explore true true true contract_key c { hash=""; previous=init_block } fblock
+    | _ -> Format.printf "Contract not found in %s@." init_block
   end;
   Writer.close_logs()
 
 let main () =
-  let print_version () = print_endline "0.1"; exit 0 in
+  let print_version () = Format.printf "%s@." version; exit 0 in
   let arg_list = Arg.align [
+      "--force", Arg.Set (MOptions.force), " Force";
       "--address", Arg.String (MOptions.setAddress), "<address> Set address";
       "--branch", Arg.String (MOptions.setBranch), "<branch> Set branch";
       "--port", Arg.String (MOptions.setPort), "<port> Set port";
