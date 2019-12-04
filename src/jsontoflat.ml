@@ -54,6 +54,7 @@ match amt with
 | None,Tpair (t1,t2) -> fold_amtype (fold_amtype acc t1) t2
 | _ as t -> acc @ [t]
 
+(* for debug purpose *)
 let rec mtype_to_string = function
 | Tpair (a1,a2) -> "PAIR of ("^(amtype_to_string a1)^") and ("^(amtype_to_string a2)^")"
 | Tordered Tint -> "INT"
@@ -78,22 +79,100 @@ let types = fold_amtype [] amt in
 
 (* flat storage type --------------------------------------------------------*)
 
-type sfield =
-| Sint of int
-| Snat of int
-| Sstr of string
-| Sbytes of bytes
-| Sbool of bool
-| Sunit
-| Soption of sfield
-| Srecord of named_sfield list
-| Scontainer of (sfield * named_sfield)
-[@@deriving yojson, show {with_path = false}]
-and named_sfield = string * sfield
+type sftype =
+| Fint
+| Fnat
+| Fstr
+| Fbytes
+| Fbool
+| Funit
+| Foption of sftype
+| Flist of sftype
+| Fset of sftype
+| Frecord of (string * sftype) list
+| Fmap of sftype * sftype
 [@@deriving yojson, show {with_path = false}]
 
-type storage = named_sfield list
+type sfval =
+| Velt of string
+| Vpair of sfval * sfval
+| Vlist of sfval list
 [@@deriving yojson, show {with_path = false}]
+and sfield = string * sftype * sfval
+[@@deriving yojson, show {with_path = false}]
+
+type storage = sfield list
+[@@deriving yojson, show {with_path = false}]
+
+let pp_str fmt str =
+  Format.fprintf fmt "%s" str
+
+let pp_list sep pp =
+  Format.pp_print_list
+    ~pp_sep:(fun fmt () -> Format.fprintf fmt "%(%)" sep)
+    pp
+
+let with_paren wp s = if wp then "("^s^")" else s
+
+let rec sftype_to_string wp = function
+| Fint -> "int"
+| Fnat -> "nat"
+| Fbytes -> "bytes"
+| Fstr -> "string"
+| Fbool -> "bool"
+| Foption t -> with_paren wp ("option of "^(sftype_to_string true t))
+| Flist t -> with_paren wp ("list of "^(sftype_to_string true t))
+| Fmap (t1,t2) -> with_paren wp ("map of "^(sftype_to_string true t1)^" to "^(sftype_to_string true t2))
+| Frecord l -> with_paren wp ("record { "^(String.concat "; "(List.map (fun (s,t) -> s^" : "^(sftype_to_string false t)) l))^" }")
+| Fset t -> with_paren wp ("set of "^(sftype_to_string true t))
+| _ -> "unit"
+
+let pp_sftype fmt t = pp_str fmt (sftype_to_string false t)
+
+exception ExpectedPair
+
+let rec pp_sfval t fmt = function
+| Velt e -> pp_str fmt e
+| Vlist l -> begin
+    match t with
+    | Foption t ->
+        if List.length l > 0 then
+            Format.fprintf fmt "Some %a"
+            (pp_sfval t) (List.nth l 0)
+        else pp_str fmt "None"
+    | Flist t ->
+        Format.fprintf fmt "[@\n  @[%a@]@\n]"
+        (pp_list ";@\n" (pp_sfval t)) l
+    | Fmap (t1,t2) ->
+        Format.fprintf fmt "[@\n  @[%a@]@\n]"
+        (pp_list ";@\n" (pp_pair t1 t2)) l
+    | Frecord _ ->
+        Format.fprintf fmt "{ @[%a@] }"
+        (pp_list "; " (pp_sfval Fint)) l
+    | Fset t ->
+        Format.fprintf fmt "{ @[%a@] }"
+        (pp_list "; " (pp_sfval t)) l
+    | _ ->
+        Format.fprintf fmt "%a"
+        (pp_list ";" (pp_sfval t)) l
+    end
+| _ -> pp_str fmt ""
+and pp_pair t1 t2 fmt = function
+| Vpair (v1,v2) ->
+    Format.fprintf fmt "%a \x1B[92m->\x1B[39m @[%a@]"
+    (pp_sfval t1) v1
+    (pp_sfval t2) v2
+| _ -> raise ExpectedPair
+
+let pp_sfield fmt (s,t,v) =
+    Format.fprintf fmt "\x1B[94m%a\x1B[39m : \x1B[93m%a\x1B[39m := %a"
+    pp_str s
+    pp_sftype t
+    (pp_sfval t) v
+
+let pp_st fmt st =
+    Format.fprintf fmt "Storage = {@\n  @[%a@]@\n}@\n"
+    (pp_list ";@\n" pp_sfield) st
 
 (* Conversions --------------------------------------------------------------*)
 
@@ -177,6 +256,11 @@ let rec json_to_mvalue json : mvalue =
         | "Unit" -> Munit
         | "False" -> Mbool false
         | "True" -> Mbool true
+        | "Some" -> begin
+            match json |> member "args" |> to_list with
+            | arg :: [] -> Moption (Some (json_to_mvalue arg))
+            | _ -> raise (ExpectedNbargs 1) end
+        | "None" -> Moption None
         | _ -> Munit
     else if List.mem "int" keys then
         let i = json |> member "int" |> to_string |> int_of_string in
@@ -191,11 +275,104 @@ let rec json_to_mvalue json : mvalue =
 
 (* Mk flat storage-----------------------------------------------------------*)
 
-let rec mk_storage stype svalue : storage =
+let rec  fold_value acc value : mvalue list =
+match value with
+| Mpair (v1,v2) -> fold_value (fold_value acc v1) v2
+| _ as v -> acc @ [v]
+
+let rec  fold_type acc typ : amtype list =
+match typ with
+| (_,Tpair (t1,t2)) -> fold_type (fold_type acc t1) t2
+| _ as t -> acc @ [t]
+
+let rec fold_type_value acc stype svalue : (amtype*mvalue) list =
 match stype, svalue with
-| (_, Tpair (t1,t2)), Mpair (v1,v2) -> (mk_storage t1 v1)@(mk_storage t2 v2)
-| (Some lbl, Tordered Tint), Mordered (Mint i) -> [(lbl,Sint i)]
-| (_, _) -> []
+| (None,Tpair (t1,t2)), Mpair (v1,v2) -> fold_type_value (fold_type_value acc t1 v1) t2 v2
+| t,v -> acc @ [t,v]
+
+let lbl_to_str i = function None -> "f"^(string_of_int i) | Some l -> l
+
+(* exception InvalidMtype
+
+let is_bigmap = function
+| Tbigmap _ -> true
+| _ -> false
+
+let rec mvalue_to_sfield t = function
+| Mordered (Mint i) when (not (is_bigmap t)) ->  Fint, Vsingle (string_of_int i)
+| Mordered (Mnat n) -> Fnat, Vsingle (string_of_int n)
+| Mordered (Mstr s) -> Fstr, Vsingle s
+| Mordered (Mbytes b) -> Fbytes, Vsingle b
+| Mbool b -> Fbool, Vsingle (string_of_bool b)
+| Mpair _ as v ->
+    let lv = fold_value [] v in
+    let lt = fold_type [] (None,t) in
+    let ln = List.mapi (fun i (s,t) ->
+        match s with
+        | None -> ("r"^(string_of_int (i+1)),t)
+        | Some s -> (s,t)) lt in
+
+    Srecord (List.map2 (fun (s,t) v -> (s,mvalue_to_sfield t v)) ln lv)
+| Moption (Some v) -> begin
+    match t with
+    | Toption t -> Soption (Some (mvalue_to_sfield t v))
+    | _ -> raise InvalidMtype end
+| Moption None -> Soption None
+| Mlist l -> begin
+    match t with
+    | Tlist t -> Slist (List.map (mvalue_to_sfield t) l)
+    | Tset t -> Sset (List.map (mvalue_to_sfield (Tordered t)) l)
+    | Tmap (t1,t2) -> Smap (List.map (fun v ->
+        match v with
+        | Melt (v1,v2) -> mvalue_to_sfield (Tordered t1) v1, mvalue_to_sfield t2 v2
+        | _ -> Sunit, Sunit) l)
+    | _ -> Sunit end
+| Mordered (Mint _) -> Smap []
+| _ -> Sunit
+ *)
+let rec mval_to_sval = function
+| Mordered (Mint i) -> Velt (string_of_int i)
+| Mordered (Mnat n) -> Velt (string_of_int n)
+| Mordered (Mbytes b) -> Velt (Bytes.to_string b)
+| Mordered (Mstr s) -> Velt s
+| Moption (Some v) -> Vlist [mval_to_sval v]
+| Moption None -> Velt ""
+| Mbool b -> Velt (string_of_bool b)
+| Mlist l -> Vlist (List.map (fun v ->
+    match v with
+    | Melt (v1,v2) -> Vpair (mval_to_sval v1, mval_to_sval v2)
+    | _ -> mval_to_sval v) l)
+| Mpair _ as v ->
+    let lv = List.map mval_to_sval (fold_value [] v) in
+    Vlist lv
+| _ -> Velt ""
+
+let rec mtyp_to_styp = function
+| Tordered Tint -> Fint
+| Tordered Tnat -> Fnat
+| Tordered Tbytes -> Fbytes
+| Tordered Tstr -> Fstr
+| Tbool -> Fbool
+| Toption t -> Foption (mtyp_to_styp t)
+| Tlist t -> Flist (mtyp_to_styp t)
+| Tmap (t1,t2) -> Fmap (mtyp_to_styp (Tordered t1), mtyp_to_styp t2)
+| Tpair _ as t ->
+    let lt = fold_type [] (None,t) in
+    let ln = List.mapi (fun i (s,t) ->
+        match s with
+        | None -> ("r"^(string_of_int (i+1)),t)
+        | Some s -> (s,t)) lt in
+    Frecord (List.map (fun (s,t) -> s, mtyp_to_styp t) ln)
+| Tset t -> Fset (mtyp_to_styp (Tordered t))
+| _ -> Funit
+
+let mk_storage stype svalue : storage =
+    let leafs = fold_type_value [] stype svalue in
+    List.mapi (fun i ((lbl,t),v) ->
+        let st = mtyp_to_styp t in
+        let sv = mval_to_sval v in
+        (lbl_to_str i lbl, st, sv)
+    ) leafs
 
 (*---------------------------------------------------------------------------*)
 
@@ -209,13 +386,15 @@ let main () =
   print_endline ""; *)
   let svalue = json_to_mvalue storage in
   let stype = json_to_mtype storage_type in
-  print_endline (amtype_to_string stype);
+  let storage = mk_storage stype svalue in
+  (* print_endline (amtype_to_string stype);
   print_endline "";
   print_endline (amtype_to_string (json_to_mtype storage_type2));
   print_endline "";
   Format.printf "%a" pp_mvalue svalue;
   print_endline "";
-  Format.printf "%a" pp_storage (mk_storage stype svalue);
-  print_endline ""
+  Format.printf "%a" pp_storage storage; *)
+  print_endline "";
+  pp_st Format.std_formatter storage
 
 let _ = main ()
