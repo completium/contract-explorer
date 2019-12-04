@@ -94,6 +94,7 @@ type contract_info = {
 
 type contract = {
   timestamp : string;
+  hash : string;
   storage : string;
   balance : string;
 }
@@ -215,6 +216,7 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
     try
       let json = Rpc.url_to_json (Url.getContract bhash chash) in (Some {
           timestamp = timestamp;
+          hash = bhash;
           storage = json |> member "script" |> member "storage" |> Safe.to_string;
           balance = json |> member "balance" |> to_string;
         })
