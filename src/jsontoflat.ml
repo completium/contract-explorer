@@ -179,56 +179,56 @@ let pp_st fmt st =
     (pp_list ";@\n" pp_sfield) st
 
 let rec pp_sfval_json fmt = function
-| Velt s -> Format.fprintf fmt "{ \"val\" : \"%a\" }" pp_str s
+| Velt s -> Format.fprintf fmt "{\"val\":\"%a\"}" pp_str s
 | Vpair (v1, v2) ->
-    Format.fprintf fmt "{ \"val\" : \"pair\", \"args\" : [%a,%a] }"
+    Format.fprintf fmt "{\"val\":\"pair\",\"args\":[%a,%a]}"
     pp_sfval_json v1
     pp_sfval_json v2
 | Vlist l ->
-    Format.fprintf fmt "{ \"val\" : \"list\", \"args\" : [%a] }"
+    Format.fprintf fmt "{\"val\":\"list\",\"args\":[%a]}"
     (pp_list "," pp_sfval_json) l
 
 let rec pp_sftype_json fmt = function
-| Fint -> Format.fprintf fmt "{ \"val\" : \"int\" }"
-| Fnat -> Format.fprintf fmt "{ \"val\" : \"nat\" }"
-| Fbytes -> Format.fprintf fmt "{ \"val\" : \"bytes\" }"
-| Fstr -> Format.fprintf fmt "{ \"val\" : \"str\" }"
-| Fbool -> Format.fprintf fmt "{ \"val\" : \"bool\" }"
+| Fint -> Format.fprintf fmt "{ \"val\":\"int\"}"
+| Fnat -> Format.fprintf fmt "{ \"val\":\"nat\"}"
+| Fbytes -> Format.fprintf fmt "{\"val\":\"bytes\"}"
+| Fstr -> Format.fprintf fmt "{\"val\":\"str\"}"
+| Fbool -> Format.fprintf fmt "{\"val\":\"bool\"}"
 | Foption t ->
-    Format.fprintf fmt "{ \"val\" : \"option\", \"args\" : [%a] }"
+    Format.fprintf fmt "{\"val\":\"option\",\"args\":[%a]}"
     pp_sftype_json t
 | Flist t ->
-    Format.fprintf fmt "{ \"val\" : \"list\", \"args\" : [%a] }"
+    Format.fprintf fmt "{\"val\":\"list\",\"args\":[%a]}"
     pp_sftype_json t
 | Fset t ->
-    Format.fprintf fmt "{ \"val\" : \"set\", \"args\" : [%a] }"
+    Format.fprintf fmt "{\"val\":\"set\",\"args\":[%a]}"
     pp_sftype_json t
 | Fmap (t1,t2) ->
-    Format.fprintf fmt "{ \"val\" : \"map\", \"args\" : [%a,%a] }"
+    Format.fprintf fmt "{\"val\":\"map\",\"args\":[%a,%a]}"
     pp_sftype_json t1
     pp_sftype_json t2
 | Fbigmap (t1,t2) ->
-    Format.fprintf fmt "{ \"val\" : \"bigmap\", \"args\" : [%a,%a] }"
+    Format.fprintf fmt "{\"val\":\"bigmap\",\"args\":[%a,%a]}"
     pp_sftype_json t1
     pp_sftype_json t2
 | Frecord l ->
-    Format.fprintf fmt "{ \"val\" : \"record\", \"args\" : [%a] }"
+    Format.fprintf fmt "{\"val\":\"record\",\"args\":[%a]}"
     (pp_list "," pp_named_sftype_json) l
-| _ -> Format.fprintf fmt "{ \"val\" : \"unit\" }"
+| _ -> Format.fprintf fmt "{\"val\":\"unit\"}"
 and pp_named_sftype_json fmt (s,t) =
-    Format.fprintf fmt "{ \"val\" : \"%a\", \"args\" : [%a] }"
+    Format.fprintf fmt "{\"val\":\"%a\",\"args\":[%a]}"
     pp_str s
     pp_sftype_json t
 
 let pp_sfield_json fmt (s,t,v) =
-    Format.fprintf fmt "\"name\" : \"%a\", \"type\" : %a, \"value\" : %a"
+    Format.fprintf fmt "\"name\":\"%a\",\"type\":%a,\"value\":%a"
     pp_str s
     pp_sftype_json t
     pp_sfval_json v
 
 let pp_st_json fmt st =
-    Format.fprintf fmt "Storage = [@\n  {%a}@\n]@\n"
-    (pp_list "},@\n{" pp_sfield_json) st
+    Format.fprintf fmt "Storage = [{%a}@\n]"
+    (pp_list "},{" pp_sfield_json) st
 
 (* Conversions --------------------------------------------------------------*)
 
@@ -396,10 +396,12 @@ let mk_storage stype svalue : storage =
 (*---------------------------------------------------------------------------*)
 
 let main () =
+  print_endline storage;
+  print_endline storage_type;
   let storage = Safe.from_string storage in
   let storage_type = Safe.from_string storage_type in
-  let storage_type2 = Safe.from_string storage_type2 in
- (*  print_endline (Safe.to_string storage_type);
+  (*let storage_type2 = Safe.from_string storage_type2 in
+  print_endline (Safe.to_string storage_type);
   print_endline "";
   Format.printf "%a" pp_amtype (json_to_mtype storage_type);
   print_endline ""; *)
