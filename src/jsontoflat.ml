@@ -406,26 +406,6 @@ let flatten_storage typ storage =
 let main () =
   print_endline storage;
   print_endline storage_type;
-  let storage = Safe.from_string storage in
-  let storage_type = Safe.from_string storage_type in
-  (*let storage_type2 = Safe.from_string storage_type2 in
-  print_endline (Safe.to_string storage_type);
-  print_endline "";
-  Format.printf "%a" pp_amtype (json_to_mtype storage_type);
-  print_endline ""; *)
-  let svalue = json_to_mvalue storage in
-  let stype = json_to_mtype storage_type in
-  let storage = mk_storage stype svalue in
-  (* print_endline (amtype_to_string stype);
-  print_endline "";
-  print_endline (amtype_to_string (json_to_mtype storage_type2));
-  print_endline "";
-  Format.printf "%a" pp_mvalue svalue;
-  print_endline "";
-  Format.printf "%a" pp_storage storage; *)
-  print_endline "";
-  pp_st Format.std_formatter storage;
-  print_endline "";
-  pp_st_json Format.std_formatter storage
+  flatten_storage storage_type storage
 
 let _ = main ()
