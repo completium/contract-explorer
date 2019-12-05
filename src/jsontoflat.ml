@@ -220,15 +220,24 @@ and pp_named_sftype_json fmt (s,t) =
     pp_str s
     pp_sftype_json t
 
-let pp_sfield_json fmt (s,t,v) =
-    Format.fprintf fmt "\"name\":\"%a\",\"type\":%a,\"value\":%a"
-    pp_str s
-    pp_sftype_json t
+let pp_val_json fmt (_s,_t,v) =
+    (* Format.fprintf fmt "\"name\":\"%a\",\"type\":%a,\"value\":%a" *)
+    Format.fprintf fmt "\"value\":%a"
     pp_sfval_json v
 
-let pp_st_json fmt st =
+let pp_typ_json fmt (s,t,_v) =
+    (* Format.fprintf fmt "\"name\":\"%a\",\"type\":%a,\"value\":%a" *)
+    Format.fprintf fmt "\"name\":\"%a\",\"type\":%a"
+    pp_str s
+    pp_sftype_json t
+
+let pp_vals_json fmt st =
     Format.fprintf fmt "[{%a}@\n]"
-    (pp_list "},{" pp_sfield_json) st
+    (pp_list "},{" pp_val_json) st
+
+let pp_typs_json fmt st =
+    Format.fprintf fmt "[{%a}@\n]"
+    (pp_list "},{" pp_typ_json) st
 
 (* Conversions --------------------------------------------------------------*)
 
@@ -341,6 +350,11 @@ match typ with
 | (_,Tpair (t1,t2)) -> fold_type (fold_type acc t1) t2
 | _ as t -> acc @ [t]
 
+let rec  fold_type_none acc typ : amtype list =
+match typ with
+| (None,Tpair (t1,t2)) -> fold_type_none (fold_type_none acc t1) t2
+| _ as t -> acc @ [t]
+
 let rec fold_type_value acc stype svalue : (amtype*mvalue) list =
 match stype, svalue with
 | (None,Tpair (t1,t2)), Mpair (v1,v2) -> fold_type_value (fold_type_value acc t1 v1) t2 v2
@@ -393,6 +407,14 @@ let mk_storage stype svalue : storage =
         (lbl_to_str i lbl, st, sv)
     ) leafs
 
+let mk_storage_typ stype : storage =
+    let leafs = fold_type_none [] stype in
+    List.mapi (fun i (lbl,t) ->
+        let st = mtyp_to_styp t in
+        (lbl_to_str i lbl, st, Velt "")
+    ) leafs
+
+
 (*---------------------------------------------------------------------------*)
 
 let flatten_storage typ storage =
@@ -401,4 +423,10 @@ let flatten_storage typ storage =
   let svalue = json_to_mvalue storage in
   let stype = json_to_mtype storage_type in
   let storage = mk_storage stype svalue in
-  Format.asprintf "%a" pp_st_json storage
+  Format.asprintf "%a" pp_vals_json storage
+
+let flatten_typ typ =
+  let storage_type = Safe.from_string typ in
+  let stype = json_to_mtype storage_type in
+  let storage = mk_storage_typ stype in
+  Format.asprintf "%a" pp_typs_json storage
