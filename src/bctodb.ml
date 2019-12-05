@@ -325,7 +325,7 @@ end
 
 module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Writer) = struct
 
-  let rec explore contract_key previous_contract previous_block fblock =
+  let rec explore first contract_key previous_contract previous_block fblock =
     let block = Block.mk_id previous_block.previous in
     (* dump operations *)
     let data = Block.mk_data block.hash in
@@ -340,14 +340,16 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Wri
       Format.printf "\nHEAD BLOCK FOUND@."
     | _, Some c ->
       if not (cmp_contracts previous_contract c) then (
-        Writer.write_storage previous_contract;
+        if first then
+          Writer.write_storage previous_contract;
         Writer.write_storage c;
-        explore contract_key c block fblock)
+        explore false contract_key c block fblock)
       else
-        explore contract_key c block fblock
+        explore first contract_key c block fblock
     | _, None -> (
         Format.printf "\nNO MORE CONTRACT@.";
-        Writer.write_storage previous_contract
+        if first then
+          Writer.write_storage previous_contract
       )
 
 end
@@ -386,7 +388,7 @@ let process contract_key =
         let cinfo = Contract.mk_data contract_key in
         let block = Block.mk_id "head" in
         Writer.write_contract_info cinfo block.hash;
-        Explorer.explore contract_key c { hash=""; previous=init_block } fblock
+        Explorer.explore true contract_key c { hash=""; previous=init_block } fblock
       end
     | _ -> Format.printf "Contract not found in %s@." init_block
   end;
