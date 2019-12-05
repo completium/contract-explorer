@@ -395,6 +395,14 @@ let mk_storage stype svalue : storage =
 
 (*---------------------------------------------------------------------------*)
 
+let flatten_storage typ storage =
+  let storage = Safe.from_string storage in
+  let storage_type = Safe.from_string typ in
+  let svalue = json_to_mvalue storage in
+  let stype = json_to_mtype storage_type in
+  let storage = mk_storage stype svalue in
+  pp_st_json Format.std_formatter storage
+
 let main () =
   print_endline storage;
   print_endline storage_type;
