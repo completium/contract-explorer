@@ -16,3 +16,11 @@ let () =
   match exec db create_table_sql with
   | Rc.OK -> print_endline "Ok"
   | r -> prerr_endline (Rc.to_string r); prerr_endline (errmsg db)
+
+
+let main () =
+  print_endline Jsontoflat.storage;
+  print_endline Jsontoflat.storage_type;
+  Jsontoflat.flatten_storage Jsontoflat.storage_type Jsontoflat.storage
+
+let _ = main ()

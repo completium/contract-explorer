@@ -25,6 +25,7 @@ module MOptions = struct
   let setPath s = path := s
 
   let force = ref false
+  let fill_storage_flat = ref false
 end
 
 (* Tools --------------------------------------------------------------------*)
@@ -77,6 +78,7 @@ type block_data = {
 [@@deriving yojson, show {with_path = false}]
 
 type contract_info = {
+  id : string;
   storage_type : string;
   entries : string list;
 }
@@ -121,7 +123,10 @@ module type Writer = sig
   val write_contract_info : contract_info -> string -> unit
   val write_storage : storage -> unit
   val write_op : op -> unit
-  val get_head_content : unit -> string option
+  val get_head_content : string -> string option
+  val get_storage_type : unit -> string
+  val get_storage_id_values : unit -> (string * string) list
+  val write_storage_flat : (string * string) list -> unit
 end
 
 module Make_Writer (Dirs : sig
@@ -130,9 +135,9 @@ module Make_Writer (Dirs : sig
   end) : Writer = struct
 
   let db = db_open "bc.db"
-  let table_info     = Dirs.contract ^ "_raw_info"
-  let table_storages = Dirs.contract ^ "_raw_storages"
-  let table_ops      = Dirs.contract ^ "_raw_ops"
+  let table_info     = "contracts_info"
+  let table_storages = "storages_" ^ Dirs.contract
+  let table_ops      = "ops_" ^ Dirs.contract
 
   let exec_cmd cmd =
     match exec db cmd with
@@ -144,14 +149,13 @@ module Make_Writer (Dirs : sig
     exec_cmd drop_table_sql
 
   let clear () =
-    drop_tables table_info;
     drop_tables table_storages;
     drop_tables table_ops
 
   let create_table_info () =
     let create_table_sql =
       Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
-                      id int PRIMARY KEY, \
+                      id VARCHAR(37) PRIMARY KEY, \
                       storage_type text NOT NULL, \
                       entries text NOT NULL, \
                       head text NOT NULL \
@@ -202,8 +206,9 @@ module Make_Writer (Dirs : sig
 
   let write_contract_info (c : contract_info) head =
     let insert : string =
-      Printf.sprintf "INSERT OR REPLACE INTO %s VALUES(1, '%s', '%s', '%s');"
+      Printf.sprintf "INSERT OR REPLACE INTO %s VALUES('%s', '%s', '%s', '%s');"
         table_info
+        c.id
         c.storage_type
         (List.fold_left (fun (accu : string) (x : string) -> accu ^ " " ^ x) "" c.entries)
         head
@@ -235,8 +240,8 @@ module Make_Writer (Dirs : sig
 
   (* print_json true !out_contract_info (contract_info_to_yojson st) *)
 
-  let get_head_content () : string option =
-    let select_sql = Printf.sprintf "SELECT head FROM %s;" table_info in
+  let get_head_content c : string option =
+    let select_sql = Printf.sprintf "SELECT head FROM %s WHERE id = '%s';" table_info c in
     (* let select_stmt = prepare db select_sql in *)
     let str = ref "" in
     match exec db select_sql ~cb:(fun row _ ->
@@ -247,6 +252,46 @@ module Make_Writer (Dirs : sig
     | Rc.OK -> Some !str
     | _ -> None
 
+
+  let get_contract_ids () : string list =
+    []
+
+  let get_storage_type () =
+    let select_sql = Printf.sprintf "SELECT storage_type FROM %s WHERE id = '%s';" table_info Dirs.contract in
+    (* let select_stmt = prepare db select_sql in *)
+    let str = ref "" in
+    match exec db select_sql ~cb:(fun row _ ->
+        match row.(0) with
+        | Some a -> str := a
+        | _ -> ()
+      ) with
+    | Rc.OK -> !str
+    | _ -> assert false
+
+  let get_storage_id_values () : (string * string) list =
+    let select_sql = Printf.sprintf "SELECT hash, storage FROM %s;" table_storages in
+    (* let select_stmt = prepare db select_sql in *)
+    let l = ref [] in
+    match exec db select_sql ~cb:(fun row _ ->
+        match row.(0), row.(1) with
+        | Some a, Some b -> l := (a, b)::!l
+        | _ -> ()
+      ) with
+    | Rc.OK -> !l
+    | _ -> assert false
+
+  let write_storage_flat l =
+    List.iter (fun (id, value) ->
+        begin
+          let insert : string =
+            Printf.sprintf "UPDATE %s SET storage_flat = '%s' WHERE hash = '%s';"
+              table_storages
+              value
+              id
+          in
+          exec_cmd insert
+        end
+      ) l
 
 end
 
@@ -316,6 +361,7 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
 
   let mk_data chash =
     let json = Rpc.url_to_json (Url.getContract "head" chash) in {
+      id = chash;
       storage_type = json_to_storage_type json;
       entries = [];
     }
@@ -371,31 +417,48 @@ let process contract_key =
   if !MOptions.force
   then Writer.clear();
 
-  let fblock = Writer.get_head_content () in
+  let fblock = Writer.get_head_content contract_key in
 
-  Writer.open_logs();
-  let module Url = Make_TzURL (TzInfo) in
-  let module Block = Make_TzBlock (Url) (Rpc) in
-  let module Contract = Make_TzContract (Url) (Block) (Rpc) in
-  let module Explorer = Make_ContractExplorer (Block) (Contract) (Writer) in
-  let init_block = "head" in
-  begin
-    match Contract.mk "" init_block contract_key with
-    | Some c ->
+  match !MOptions.fill_storage_flat with
+  | true ->
+    begin
+      let process_storage_flat () =
+        let storage_type = Writer.get_storage_type () in
+        let storage_id_values = Writer.get_storage_id_values () in
+        let s = List.map (fun (x, y) -> (x, Jsontoflat.flatten_storage storage_type y)) storage_id_values in
+        Writer.write_storage_flat s
+      in
+      (* get_contract_ids()
+         |> List.iter (fun x -> process_storage_flat x) *)
+      process_storage_flat ()
+    end
+  | _ ->
+    begin
+      Writer.open_logs();
+      let module Url = Make_TzURL (TzInfo) in
+      let module Block = Make_TzBlock (Url) (Rpc) in
+      let module Contract = Make_TzContract (Url) (Block) (Rpc) in
+      let module Explorer = Make_ContractExplorer (Block) (Contract) (Writer) in
+      let init_block = "head" in
       begin
-        let cinfo = Contract.mk_data contract_key in
-        let block = Block.mk_id "head" in
-        Writer.write_contract_info cinfo block.hash;
-        Explorer.explore contract_key c { hash=""; previous=init_block } fblock
-      end
-    | _ -> Format.printf "Contract not found in %s@." init_block
-  end;
-  Writer.close_logs()
+        match Contract.mk "" init_block contract_key with
+        | Some c ->
+          begin
+            let cinfo = Contract.mk_data contract_key in
+            let block = Block.mk_id "head" in
+            Writer.write_contract_info cinfo block.hash;
+            Explorer.explore contract_key c { hash=""; previous=init_block } fblock
+          end
+        | _ -> Format.printf "Contract not found in %s@." init_block
+      end;
+      Writer.close_logs()
+    end
 
 let main () =
   let print_version () = Format.printf "%s@." version; exit 0 in
   let arg_list = Arg.align [
       "--force", Arg.Set (MOptions.force), " Force";
+      "--fill-storage-flat", Arg.Set (MOptions.fill_storage_flat), " Force";
       "--address", Arg.String (MOptions.setAddress), "<address> Set address";
       "--branch", Arg.String (MOptions.setBranch), "<branch> Set branch";
       "--port", Arg.String (MOptions.setPort), "<port> Set port";
