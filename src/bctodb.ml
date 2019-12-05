@@ -167,6 +167,7 @@ module Make_Writer (Dirs : sig
                       hash VARCHAR(52) PRIMARY KEY, \
                       timestamp date NOT NULL, \
                       storage text NOT NULL, \
+                      storage_flat text, \
                       balance text NOT NULL \
                       );"
 
@@ -211,7 +212,7 @@ module Make_Writer (Dirs : sig
 
   let write_storage (s : storage) =
     let insert : string =
-      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', '%s');"
+      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', NULL, '%s');"
         table_storages
         s.hash
         s.timestamp
