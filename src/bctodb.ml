@@ -25,6 +25,7 @@ module MOptions = struct
   let setPath s = path := s
 
   let force = ref false
+  let fill_storage_flat = ref false
 end
 
 (* Tools --------------------------------------------------------------------*)
@@ -77,6 +78,7 @@ type block_data = {
 [@@deriving yojson, show {with_path = false}]
 
 type contract_info = {
+  id : string;
   storage_type : string;
   entries : string list;
 }
@@ -121,7 +123,7 @@ module type Writer = sig
   val write_contract_info : contract_info -> string -> unit
   val write_storage : storage -> unit
   val write_op : op -> unit
-  val get_head_content : unit -> string option
+  val get_head_content : string -> string option
 end
 
 module Make_Writer (Dirs : sig
@@ -130,9 +132,9 @@ module Make_Writer (Dirs : sig
   end) : Writer = struct
 
   let db = db_open "bc.db"
-  let table_info     = Dirs.contract ^ "_raw_info"
-  let table_storages = Dirs.contract ^ "_raw_storages"
-  let table_ops      = Dirs.contract ^ "_raw_ops"
+  let table_info     = "contracts_info"
+  let table_storages = "storages_" ^ Dirs.contract
+  let table_ops      = "ops_" ^ Dirs.contract
 
   let exec_cmd cmd =
     match exec db cmd with
@@ -144,14 +146,13 @@ module Make_Writer (Dirs : sig
     exec_cmd drop_table_sql
 
   let clear () =
-    drop_tables table_info;
     drop_tables table_storages;
     drop_tables table_ops
 
   let create_table_info () =
     let create_table_sql =
       Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
-                      id int PRIMARY KEY, \
+                      id VARCHAR(37) PRIMARY KEY, \
                       storage_type text NOT NULL, \
                       entries text NOT NULL, \
                       head text NOT NULL \
@@ -202,8 +203,9 @@ module Make_Writer (Dirs : sig
 
   let write_contract_info (c : contract_info) head =
     let insert : string =
-      Printf.sprintf "INSERT OR REPLACE INTO %s VALUES(1, '%s', '%s', '%s');"
+      Printf.sprintf "INSERT OR REPLACE INTO %s VALUES('%s', '%s', '%s', '%s');"
         table_info
+        c.id
         c.storage_type
         (List.fold_left (fun (accu : string) (x : string) -> accu ^ " " ^ x) "" c.entries)
         head
@@ -235,8 +237,8 @@ module Make_Writer (Dirs : sig
 
   (* print_json true !out_contract_info (contract_info_to_yojson st) *)
 
-  let get_head_content () : string option =
-    let select_sql = Printf.sprintf "SELECT head FROM %s;" table_info in
+  let get_head_content c : string option =
+    let select_sql = Printf.sprintf "SELECT head FROM %s WHERE id = '%s';" table_info c in
     (* let select_stmt = prepare db select_sql in *)
     let str = ref "" in
     match exec db select_sql ~cb:(fun row _ ->
@@ -316,6 +318,7 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
 
   let mk_data chash =
     let json = Rpc.url_to_json (Url.getContract "head" chash) in {
+      id = chash;
       storage_type = json_to_storage_type json;
       entries = [];
     }
@@ -352,7 +355,7 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Wri
 
 end
 
-let process contract_key =
+let explore contract_key =
   let contract_key = match contract_key with
     | "" -> Format.eprintf "no contract"; exit 1
     | _  -> contract_key
@@ -371,7 +374,7 @@ let process contract_key =
   if !MOptions.force
   then Writer.clear();
 
-  let fblock = Writer.get_head_content () in
+  let fblock = Writer.get_head_content contract_key in
 
   Writer.open_logs();
   let module Url = Make_TzURL (TzInfo) in
@@ -392,10 +395,17 @@ let process contract_key =
   end;
   Writer.close_logs()
 
+let process arg =
+match !MOptions.force, !MOptions.fill_storage_flat with
+| true, _ -> explore arg
+| _, true -> explore arg
+| _ -> explore arg
+
 let main () =
   let print_version () = Format.printf "%s@." version; exit 0 in
   let arg_list = Arg.align [
       "--force", Arg.Set (MOptions.force), " Force";
+      "--fill-storage-flat", Arg.Set (MOptions.fill_storage_flat), " Force";
       "--address", Arg.String (MOptions.setAddress), "<address> Set address";
       "--branch", Arg.String (MOptions.setBranch), "<branch> Set branch";
       "--port", Arg.String (MOptions.setPort), "<port> Set port";
