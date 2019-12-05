@@ -401,7 +401,7 @@ let flatten_storage typ storage =
   let svalue = json_to_mvalue storage in
   let stype = json_to_mtype storage_type in
   let storage = mk_storage stype svalue in
-  pp_st_json Format.std_formatter storage
+  Format.asprintf "%a" pp_st_json storage
 
 let main () =
   print_endline storage;
