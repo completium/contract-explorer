@@ -406,6 +406,6 @@ let flatten_storage typ storage =
 let main () =
   print_endline storage;
   print_endline storage_type;
-  flatten_storage storage_type storage
+  print_endline (flatten_storage storage_type storage)
 
 let _ = main ()
