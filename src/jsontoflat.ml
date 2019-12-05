@@ -227,7 +227,7 @@ let pp_sfield_json fmt (s,t,v) =
     pp_sfval_json v
 
 let pp_st_json fmt st =
-    Format.fprintf fmt "Storage = [{%a}@\n]"
+    Format.fprintf fmt "[{%a}@\n]"
     (pp_list "},{" pp_sfield_json) st
 
 (* Conversions --------------------------------------------------------------*)
