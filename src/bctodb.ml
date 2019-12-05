@@ -1,6 +1,7 @@
 open Yojson
 open Safe
 open Util
+open Sqlite3
 
 let version = "0.1"
 
@@ -81,7 +82,7 @@ type contract_info = {
 }
 [@@deriving yojson, show {with_path = false}]
 
-type contract = {
+type storage = {
   timestamp : string;
   hash : string;
   storage : string;
@@ -107,7 +108,7 @@ module type Block = sig
 end
 
 module type Contract = sig
-  val mk : string -> string -> string -> contract option
+  val mk : string -> string -> string -> storage option
   val mk_data : string -> contract_info
 end
 
@@ -117,92 +118,135 @@ module type Writer = sig
   val clear : unit -> unit
   val open_logs : unit -> unit
   val close_logs : unit -> unit
-  val write_head : string -> unit
-  val write_contract : bool -> contract -> unit
-  val write_contract_info : contract_info -> unit
-  val write_op : bool -> op -> unit
-  val is_head_exists : unit -> bool
-  val get_head_content : unit -> string
+  val write_contract_info : contract_info -> string -> unit
+  val write_storage : storage -> unit
+  val write_op : op -> unit
+  val get_head_content : unit -> string option
 end
 
 module Make_Writer (Dirs : sig
     val path : string
     val contract : string
   end) : Writer = struct
-  let out_contracts = ref stdout
-  let out_ops = ref stdout
-  let out_contract_info = ref stdout
+
+  let db = db_open "bc.db"
+  let table_info     = Dirs.contract ^ "_raw_info"
+  let table_storages = Dirs.contract ^ "_raw_storages"
+  let table_ops      = Dirs.contract ^ "_raw_ops"
+
+  let exec_cmd cmd =
+    match exec db cmd with
+    | Rc.OK -> ()
+    | r -> prerr_endline (Rc.to_string r); prerr_endline (errmsg db)
+
+  let drop_tables table =
+    let drop_table_sql = "DROP TABLE IF EXISTS " ^ table ^ ";" in
+    exec_cmd drop_table_sql
 
   let clear () =
-    let rm p =
-      if (Sys.file_exists p)
-      then Sys.remove p
+    drop_tables table_info;
+    drop_tables table_storages;
+    drop_tables table_ops
+
+  let create_table_info () =
+    let create_table_sql =
+      Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
+                      id int PRIMARY KEY, \
+                      storage_type text NOT NULL, \
+                      entries text NOT NULL, \
+                      head text NOT NULL \
+                      );"
+
+        table_info
     in
-    let dir = Dirs.path ^ "/" ^ Dirs.contract in
-    rm (dir ^ "/head.txt");
-    rm (dir ^ "/storages.json");
-    rm (dir ^ "/ops.json");
-    rm (dir ^ "/contract_info.json");
-    if (Sys.file_exists dir)
-    then Unix.rmdir dir
+    exec_cmd create_table_sql
+
+  let create_table_storages () =
+    let create_table_sql =
+      Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
+                      hash VARCHAR(52) PRIMARY KEY, \
+                      timestamp date NOT NULL, \
+                      storage text NOT NULL, \
+                      balance text NOT NULL \
+                      );"
+
+        table_storages
+    in
+    exec_cmd create_table_sql
+
+  let create_table_ops () =
+    let create_table_sql =
+      Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
+                      hash VARCHAR(52) PRIMARY KEY, \
+                      timestamp date NOT NULL, \
+                      source VARCHAR(37) NOT NULL, \
+                      destination VARCHAR(37) NOT NULL, \
+                      parameters text \
+                      );"
+
+        table_ops
+    in
+    exec_cmd create_table_sql
+
+  let create_tables () =
+    create_table_info ();
+    create_table_storages ();
+    create_table_ops ()
 
   let open_logs () =
-    let dir = Dirs.path ^ "/" ^ Dirs.contract in
-    if not (Sys.file_exists dir)
-    then Unix.mkdir dir 0o700;
-    out_contracts := open_out_gen [Open_creat;Open_append] 0o640 (dir ^ "/storages.json");
-    out_ops := open_out_gen [Open_creat;Open_append] 0o640 (dir ^ "/ops.json");
-    out_contract_info := open_out_gen [Open_creat;Open_append] 0o640 (dir ^ "/contract_info.json");
-    Printf.fprintf !out_contracts "%s" "[";
-    Printf.fprintf !out_ops "%s" "[";
-    flush !out_contracts;
-    flush !out_ops
+    create_tables ()
 
   let close_logs () =
-    Printf.fprintf !out_contracts "%s" "]";
-    Printf.fprintf !out_ops "%s" "]";
-    flush !out_contracts;
-    flush !out_ops;
-    close_out !out_contracts;
-    close_out !out_ops;
-    close_out !out_contract_info
+    ()
 
-  let print_json first channel json =
-    Printf.fprintf channel "%s" (if first then "" else ",\n");
-    let str = Yojson.Safe.to_string json in
-    Printf.fprintf channel "%s" str;
-    flush channel
+  let write_contract_info (c : contract_info) head =
+    let insert : string =
+      Printf.sprintf "INSERT OR REPLACE INTO %s VALUES(1, '%s', '%s', '%s');"
+        table_info
+        c.storage_type
+        (List.fold_left (fun (accu : string) (x : string) -> accu ^ " " ^ x) "" c.entries)
+        head
+    in
+    exec_cmd insert
 
-  let write_head str =
-    let file = Dirs.path ^ "/" ^ Dirs.contract ^ "/head.txt" in
-    if (Sys.file_exists file)
-    then Sys.remove file;
-    let out = ref stdout in
-    out := open_out_gen [Open_creat;Open_append] 0o640 file;
-    Printf.fprintf !out "%s\n" str;
-    close_out !out
+  let write_storage (s : storage) =
+    let insert : string =
+      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', '%s');"
+        table_storages
+        s.hash
+        s.timestamp
+        s.storage
+        s.balance
+    in
+    exec_cmd insert
 
-  let write_contract first contract =
-    print_json first !out_contracts (contract_to_yojson contract)
+  let write_op (op : op) =
+    let insert : string =
+      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', '%s', '%s');"
+        table_ops
+        op.hash
+        op.timestamp
+        op.source
+        op.destination
+        op.parameters
+    in
+    exec_cmd insert
 
-  let write_op first op =
-    print_json first !out_ops (op_to_yojson op)
+  (* print_json true !out_contract_info (contract_info_to_yojson st) *)
 
-  let write_contract_info st =
-    print_json true !out_contract_info (contract_info_to_yojson st)
+  let get_head_content () : string option =
+    let select_sql = Printf.sprintf "SELECT head FROM %s;" table_info in
+    (* let select_stmt = prepare db select_sql in *)
+    let str = ref "" in
+    match exec db select_sql ~cb:(fun row _ ->
+        match row.(0) with
+        | Some a -> str := a
+        | _ -> ()
+      ) with
+    | Rc.OK -> Some !str
+    | _ -> None
 
-  let is_head_exists () =
-    Sys.file_exists (Dirs.path ^ "/" ^ Dirs.contract ^ "/head.txt")
 
-  let get_head_content () =
-    let ic = open_in (Dirs.path ^ "/" ^ Dirs.contract ^ "/head.txt") in
-    try
-      let line = input_line ic in
-      close_in ic;
-      line
-    with e ->
-      close_in_noerr ic;
-      raise e
 end
 
 (* Tezos --------------------------------------------------------------------*)
@@ -281,40 +325,29 @@ end
 
 module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Writer) = struct
 
-  let rec explore first_explored_block first firstop contract_key previous_contract previous_block fblock =
+  let rec explore contract_key previous_contract previous_block fblock =
     let block = Block.mk_id previous_block.previous in
-    (* write first block explored hash *)
-    (if first_explored_block
-     then Writer.write_head block.hash);
     (* dump operations *)
     let data = Block.mk_data block.hash in
     let ops = List.filter(fun op ->
         let { hash=_; source=src; destination=dst } = op in
         compare src contract_key = 0 || compare dst contract_key = 0
       ) data.operations in
-    let firstop =
-      if List.length ops > 0 then
-        (List.iter (fun op -> Writer.write_op firstop op) ops;
-         false)
-      else firstop in
+    List.iter (fun op -> Writer.write_op op) ops;
     print_string ("."); flush stdout;
     match fblock, Contract.mk data.timestamp block.hash contract_key with
     | Some f, _ when String.equal f block.hash ->
-      Format.printf "\nHEAD BLOCK FOUND@.";
-      if first then
-        Writer.write_contract first previous_contract
+      Format.printf "\nHEAD BLOCK FOUND@."
     | _, Some c ->
       if not (cmp_contracts previous_contract c) then (
-        if first then
-          Writer.write_contract first previous_contract;
-        Writer.write_contract false c;
-        explore false false firstop contract_key c block fblock)
+        Writer.write_storage previous_contract;
+        Writer.write_storage c;
+        explore contract_key c block fblock)
       else
-        explore false first firstop contract_key c block fblock
+        explore contract_key c block fblock
     | _, None -> (
         Format.printf "\nNO MORE CONTRACT@.";
-        if first then
-          Writer.write_contract first previous_contract
+        Writer.write_storage previous_contract
       )
 
 end
@@ -338,13 +371,7 @@ let process contract_key =
   if !MOptions.force
   then Writer.clear();
 
-  let fblock =
-    begin
-      if Writer.is_head_exists()
-      then Some (Writer.get_head_content ())
-      else None
-    end
-  in
+  let fblock = Writer.get_head_content () in
 
   Writer.open_logs();
   let module Url = Make_TzURL (TzInfo) in
@@ -355,9 +382,12 @@ let process contract_key =
   begin
     match Contract.mk "" init_block contract_key with
     | Some c ->
-      let cinfo = Contract.mk_data contract_key in
-      Writer.write_contract_info cinfo;
-      Explorer.explore true true true contract_key c { hash=""; previous=init_block } fblock
+      begin
+        let cinfo = Contract.mk_data contract_key in
+        let block = Block.mk_id "head" in
+        Writer.write_contract_info cinfo block.hash;
+        Explorer.explore contract_key c { hash=""; previous=init_block } fblock
+      end
     | _ -> Format.printf "Contract not found in %s@." init_block
   end;
   Writer.close_logs()

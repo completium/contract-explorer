@@ -18,5 +18,6 @@ Contract explorer
    (ocaml (>= 4.07.0))
    (dune  (>= 1.10.0))
    curly
+   sqlite3
   )
 )

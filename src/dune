@@ -2,6 +2,6 @@
   (preprocess
     (pps ppx_deriving.std ppx_deriving_yojson)
   )
-  (modules bctojson jsontoflat)
-  (libraries curly ppx_deriving yojson ppx_deriving_yojson.runtime)
-  (names     bctojson jsontoflat))
+  (modules bctodb jsontoflat sample)
+  (libraries curly sqlite3 ppx_deriving yojson ppx_deriving_yojson.runtime)
+  (names     bctodb jsontoflat sample))

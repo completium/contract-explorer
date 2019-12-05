@@ -6,16 +6,19 @@
 PROFILE  ?= dev
 
 # --------------------------------------------------------------------
-all: bctojson jsontoflat .merlin
+all: bctodb jsontoflat sample .merlin
 
 run: __force__
 	dune exec ./$(COMPILER)
 
-bctojson: __force__
-	dune build --profile=$(PROFILE) bctojson.exe
+bctodb: __force__
+	dune build --profile=$(PROFILE) bctodb.exe
 
 jsontoflat: __force__
 	dune build --profile=$(PROFILE) jsontoflat.exe
+
+sample: __force__
+	dune build --profile=$(PROFILE) sample.exe
 
 clean: __force__
 	dune clean
