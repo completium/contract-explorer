@@ -121,8 +121,8 @@ module type Writer = sig
   val open_logs : unit -> unit
   val close_logs : unit -> unit
   val write_contract_info : contract_info -> string -> unit
-  val write_storage : storage -> unit
-  val write_op : op -> unit
+  val write_storage : string -> storage -> unit
+  val write_op : string -> op -> unit
   val get_head_content : string -> string option
   val get_storage_type : unit -> string
   val get_storage_id_values : unit -> (string * string) list
@@ -136,8 +136,8 @@ module Make_Writer (Dirs : sig
 
   let db = db_open "bc.db"
   let table_info     = "contracts_info"
-  let table_storages = "storages_" ^ Dirs.contract
-  let table_ops      = "ops_" ^ Dirs.contract
+  let table_storages = "storages"
+  let table_ops      = "operations"
 
   let exec_cmd cmd =
     match exec db cmd with
@@ -169,6 +169,7 @@ module Make_Writer (Dirs : sig
     let create_table_sql =
       Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
                       hash VARCHAR(52) PRIMARY KEY, \
+                      contract_id VARCHAR(37) NOT NULL, \
                       timestamp date NOT NULL, \
                       storage text NOT NULL, \
                       storage_flat text, \
@@ -183,6 +184,7 @@ module Make_Writer (Dirs : sig
     let create_table_sql =
       Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
                       hash VARCHAR(52) PRIMARY KEY, \
+                      contract_id VARCHAR(37) NOT NULL, \
                       timestamp date NOT NULL, \
                       source VARCHAR(37) NOT NULL, \
                       destination VARCHAR(37) NOT NULL, \
@@ -215,22 +217,24 @@ module Make_Writer (Dirs : sig
     in
     exec_cmd insert
 
-  let write_storage (s : storage) =
+  let write_storage contract_id (s : storage) =
     let insert : string =
-      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', NULL, '%s');"
+      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', '%s', NULL, '%s');"
         table_storages
         s.hash
+        contract_id
         s.timestamp
         s.storage
         s.balance
     in
     exec_cmd insert
 
-  let write_op (op : op) =
+  let write_op contract_id (op : op) =
     let insert : string =
-      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', '%s', '%s');"
+      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', '%s', '%s', '%s');"
         table_ops
         op.hash
+        contract_id
         op.timestamp
         op.source
         op.destination
@@ -372,36 +376,36 @@ end
 
 module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Writer) = struct
 
-  let rec explore contract_key previous_contract previous_block fblock =
+  let rec explore contract_id previous_contract previous_block fblock =
     let block = Block.mk_id previous_block.previous in
     (* dump operations *)
     let data = Block.mk_data block.hash in
     let ops = List.filter(fun op ->
         let { hash=_; source=src; destination=dst } = op in
-        compare src contract_key = 0 || compare dst contract_key = 0
+        compare src contract_id = 0 || compare dst contract_id = 0
       ) data.operations in
-    List.iter (fun op -> Writer.write_op op) ops;
+    List.iter (fun op -> Writer.write_op contract_id op) ops;
     print_string ("."); flush stdout;
-    match fblock, Contract.mk data.timestamp block.hash contract_key with
+    match fblock, Contract.mk data.timestamp block.hash contract_id with
     | Some f, _ when String.equal f block.hash ->
       Format.printf "\nHEAD BLOCK FOUND@."
     | _, Some c ->
       if not (cmp_contracts previous_contract c) then (
-        Writer.write_storage previous_contract;
-        explore contract_key c block fblock)
+        Writer.write_storage contract_id previous_contract;
+        explore contract_id c block fblock)
       else
-        explore contract_key c block fblock
+        explore contract_id c block fblock
     | _, None -> (
         Format.printf "\nNO MORE CONTRACT@.";
-        Writer.write_storage previous_contract
+        Writer.write_storage contract_id previous_contract
       )
 
 end
 
-let process contract_key =
-  let contract_key = match contract_key with
+let process contract_id =
+  let contract_id = match contract_id with
     | "" -> Format.eprintf "no contract"; exit 1
-    | _  -> contract_key
+    | _  -> contract_id
   in
 
   let module TzInfo : BCinfo = struct
@@ -411,13 +415,13 @@ let process contract_key =
   end in
   let module Writer = Make_Writer (struct
       let path = MOptions.getPath()
-      let contract = contract_key
+      let contract = contract_id
     end) in
 
   if !MOptions.force
   then Writer.clear();
 
-  let fblock = Writer.get_head_content contract_key in
+  let fblock = Writer.get_head_content contract_id in
 
   match !MOptions.fill_storage_flat with
   | true ->
@@ -441,13 +445,13 @@ let process contract_key =
       let module Explorer = Make_ContractExplorer (Block) (Contract) (Writer) in
       let init_block = "head" in
       begin
-        match Contract.mk "" init_block contract_key with
+        match Contract.mk "" init_block contract_id with
         | Some c ->
           begin
-            let cinfo = Contract.mk_data contract_key in
+            let cinfo = Contract.mk_data contract_id in
             let block = Block.mk_id "head" in
             Writer.write_contract_info cinfo block.hash;
-            Explorer.explore contract_key c { hash=""; previous=init_block } fblock
+            Explorer.explore contract_id c { hash=""; previous=init_block } fblock
           end
         | _ -> Format.printf "Contract not found in %s@." init_block
       end;
@@ -458,7 +462,7 @@ let main () =
   let print_version () = Format.printf "%s@." version; exit 0 in
   let arg_list = Arg.align [
       "--force", Arg.Set (MOptions.force), " Force";
-      "--fill-storage-flat", Arg.Set (MOptions.fill_storage_flat), " Force";
+      "--fill-storage-flat", Arg.Set (MOptions.fill_storage_flat), " Fill storage flat";
       "--address", Arg.String (MOptions.setAddress), "<address> Set address";
       "--branch", Arg.String (MOptions.setBranch), "<branch> Set branch";
       "--port", Arg.String (MOptions.setPort), "<port> Set port";
