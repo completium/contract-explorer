@@ -7,6 +7,13 @@ let version = "0.1"
 
 (* Options ------------------------------------------------------------------*)
 
+type command =
+  | Sync
+  | AddContract of string
+  | FillStorageFlat
+  | None
+[@@deriving show {with_path = false}]
+
 module MOptions = struct
   let address = ref "localhost"
   let getAddress _ = !address
@@ -24,9 +31,10 @@ module MOptions = struct
   let getPath _ = !path
   let setPath s = path := s
 
-  let force = ref false
-  let fill_storage_flat = ref false
+  let cmd : command ref = ref None
+
 end
+
 
 (* Tools --------------------------------------------------------------------*)
 
@@ -117,23 +125,22 @@ end
 
 (* output module ------------------------------------------------------------*)
 
-module type Writer = sig
+module type Db = sig
   val clear : unit -> unit
   val open_logs : unit -> unit
   val close_logs : unit -> unit
-  val write_contract_info : contract_info -> string -> unit
+  val write_contract_info : contract_info -> unit
   val write_storage : string -> storage -> unit
   val write_op : string -> op -> unit
-  val get_head_content : string -> string option
-  val get_storage_type : unit -> string
-  val get_storage_id_values : unit -> (string * string) list
+  val get_storage_type : string -> string
+  val get_storage_id_values_from_contract_id : string -> (string * string) list
   val write_storage_flat : (string * string) list -> unit
+  val write_head : string -> string -> unit
+  val get_contract_ids : unit -> string list
+  val get_contract_ids_head : unit -> (string * string option) list
 end
 
-module Make_Writer (Dirs : sig
-    val path : string
-    val contract : string
-  end) : Writer = struct
+module Make_Db : Db = struct
 
   let db = db_open "bc.db"
   let table_info     = "contracts_info"
@@ -160,7 +167,7 @@ module Make_Writer (Dirs : sig
                       storage_type text NOT NULL, \
                       storage_type_flat text, \
                       entries text NOT NULL, \
-                      head text NOT NULL \
+                      head text \
                       );"
 
         table_info
@@ -208,15 +215,14 @@ module Make_Writer (Dirs : sig
   let close_logs () =
     ()
 
-  let write_contract_info (c : contract_info) head =
+  let write_contract_info (c : contract_info) =
     let insert : string =
-      Printf.sprintf "INSERT OR REPLACE INTO %s VALUES('%s', '%s', '%s', '%s', '%s');"
+      Printf.sprintf "INSERT OR REPLACE INTO %s VALUES('%s', '%s', '%s', '%s', NULL);"
         table_info
         c.id
         c.storage_type
         c.storage_type_flat
         (List.fold_left (fun (accu : string) (x : string) -> accu ^ " " ^ x) "" c.entries)
-        head
     in
     exec_cmd insert
 
@@ -245,27 +251,30 @@ module Make_Writer (Dirs : sig
     in
     exec_cmd insert
 
-  (* print_json true !out_contract_info (contract_info_to_yojson st) *)
-
-  let get_head_content c : string option =
-    let select_sql = Printf.sprintf "SELECT head FROM %s WHERE id = '%s';" table_info c in
-    (* let select_stmt = prepare db select_sql in *)
-    let str = ref "" in
+  let get_contract_ids () : string list =
+    let select_sql = Printf.sprintf "SELECT id FROM %s;" table_info in
+    let l = ref [] in
     match exec db select_sql ~cb:(fun row _ ->
         match row.(0) with
-        | Some a -> str := a
+        | Some a -> l := a::!l
         | _ -> ()
       ) with
-    | Rc.OK -> Some !str
-    | _ -> None
+    | Rc.OK -> !l
+    | _ -> assert false
 
+  let get_contract_ids_head () : (string * string option) list =
+    let select_sql = Printf.sprintf "SELECT id, head FROM %s;" table_info in
+    let l : (string * string option) list ref = ref [] in
+    match exec db select_sql ~cb:(fun row _ ->
+        match row.(0), row.(1) with
+        | Some a, b -> l := (a, b)::!l
+        | _ -> ()
+      ) with
+    | Rc.OK -> !l
+    | _ -> assert false
 
-  let get_contract_ids () : string list =
-    []
-
-  let get_storage_type () =
-    let select_sql = Printf.sprintf "SELECT storage_type FROM %s WHERE id = '%s';" table_info Dirs.contract in
-    (* let select_stmt = prepare db select_sql in *)
+  let get_storage_type contract_id =
+    let select_sql = Printf.sprintf "SELECT storage_type FROM %s WHERE id = '%s';" table_info contract_id in
     let str = ref "" in
     match exec db select_sql ~cb:(fun row _ ->
         match row.(0) with
@@ -275,9 +284,8 @@ module Make_Writer (Dirs : sig
     | Rc.OK -> !str
     | _ -> assert false
 
-  let get_storage_id_values () : (string * string) list =
-    let select_sql = Printf.sprintf "SELECT hash, storage FROM %s;" table_storages in
-    (* let select_stmt = prepare db select_sql in *)
+  let get_storage_id_values_from_contract_id contract_id : (string * string) list =
+    let select_sql = Printf.sprintf "SELECT hash, storage FROM %s WHERE contract_id = '%s';" table_storages contract_id in
     let l = ref [] in
     match exec db select_sql ~cb:(fun row _ ->
         match row.(0), row.(1) with
@@ -286,6 +294,15 @@ module Make_Writer (Dirs : sig
       ) with
     | Rc.OK -> !l
     | _ -> assert false
+
+  let write_head head contract_id =
+    let insert : string =
+      Printf.sprintf "UPDATE %s SET head = '%s' WHERE id = '%s';"
+        table_info
+        head
+        contract_id
+    in
+    exec_cmd insert
 
   let write_storage_flat l =
     List.iter (fun (id, value) ->
@@ -370,7 +387,7 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
     let json = Rpc.url_to_json (Url.getContract "head" chash) in
     let storage_type = json_to_storage_type json in
     let storage_type_flat = Jsontoflat.flatten_typ storage_type in
-     {
+    {
       id = chash;
       storage_type = storage_type;
       storage_type_flat = storage_type_flat;
@@ -379,97 +396,152 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
 
 end
 
+
+
+module type Pool = sig
+  val make : (string * string option) list -> unit
+  val init : string -> string -> unit
+  val remove_contract : string -> unit
+  val get_contract_ids : unit -> string list
+  val get_contract_ids_head : unit -> (string * string option) list
+  val get_contract : string -> storage
+  val set_contract : string -> storage -> unit
+  val is_not_empty : unit -> bool
+end
+module Make_Pool (Contract : Contract) (Db : Db) : Pool = struct
+  let heads : (string * string option) list ref = ref []
+  let storages : (string * storage) list ref = ref []
+
+  let make l = heads := l
+  let init timestamp hash =
+    storages := List.map (fun (contract_id, _) ->
+        match  Contract.mk timestamp hash contract_id with
+        | Some v -> contract_id, v
+        | _ -> assert false) !heads
+
+  let remove_contract contract_id =
+    let f (a, _) = not (String.equal a contract_id) in
+    heads := List.filter f !heads;
+    storages := List.filter f !storages
+  let get_contract_ids _ = List.map fst !heads
+  let get_contract_ids_head _ = !heads
+  let get_contract contract_id = List.assoc contract_id !storages
+  let set_contract contract_id s = storages := List.map (fun (id, st) ->
+      if String.equal contract_id id
+      then (id, s)
+      else (id, st)) !storages
+  let is_not_empty _ = List.length !heads > 0
+end
+
 (* Contract Explorer --------------------------------------------------------*)
 
-module Make_ContractExplorer (Block : Block) (Contract : Contract) (Writer : Writer) = struct
+module Make_ContractExplorer (Block : Block) (Contract : Contract) (Db : Db) (Pool : Pool) = struct
 
-  let rec explore contract_id previous_contract previous_block fblock =
-    let block = Block.mk_id previous_block.previous in
+  let rec explore block_hash =
+    let block = Block.mk_id block_hash in
     (* dump operations *)
     let data = Block.mk_data block.hash in
-    let ops = List.filter(fun op ->
+    let contract_ids = Pool.get_contract_ids () in
+    List.iter (fun op ->
         let { hash=_; source=src; destination=dst } = op in
-        compare src contract_id = 0 || compare dst contract_id = 0
-      ) data.operations in
-    List.iter (fun op -> Writer.write_op contract_id op) ops;
+        if (List.mem src contract_ids)
+        then Db.write_op src op;
+        if (List.mem dst contract_ids)
+        then Db.write_op dst op;
+      ) data.operations;
     print_string ("."); flush stdout;
-    match fblock, Contract.mk data.timestamp block.hash contract_id with
-    | Some f, _ when String.equal f block.hash ->
-      Format.printf "\nHEAD BLOCK FOUND@."
-    | _, Some c ->
-      if not (cmp_contracts previous_contract c) then (
-        Writer.write_storage contract_id previous_contract;
-        explore contract_id c block fblock)
-      else
-        explore contract_id c block fblock
-    | _, None -> (
-        Format.printf "\nNO MORE CONTRACT@.";
-        Writer.write_storage contract_id previous_contract
-      )
+    let l : (string * string option) list = Pool.get_contract_ids_head () in
+    List.iter (fun (contract_id, contract_head) ->
+        match contract_head, Contract.mk data.timestamp block.hash contract_id with
+        | Some f, _ when String.equal f block.hash ->
+          Pool.remove_contract contract_id
+        | _, Some c ->
+          begin
+            let previous_contract = Pool.get_contract contract_id in
+            if not (cmp_contracts previous_contract c)
+            then
+              begin
+                Db.write_storage contract_id previous_contract;
+                Pool.set_contract contract_id c
+              end
+          end
+        | _, None ->
+          begin
+            let previous_contract = Pool.get_contract contract_id in
+            Db.write_storage contract_id previous_contract;
+            Pool.remove_contract contract_id
+          end
+      ) l;
+    if Pool.is_not_empty()
+    then explore block.previous
 
 end
 
-let process contract_id =
-  let contract_id = match contract_id with
-    | "" -> Format.eprintf "no contract"; exit 1
-    | _  -> contract_id
+let process _ =
+  let module Db = Make_Db in
+
+  let add_contract (contract_id : string) =
+    let module TzInfo : BCinfo = struct
+      let getIp () = MOptions.getAddress()
+      let getPort () = MOptions.getPort()
+      let getBranch () = MOptions.getBranch()
+    end in
+    let module Url = Make_TzURL (TzInfo) in
+    let module Block = Make_TzBlock (Url) (Rpc) in
+    let module Contract = Make_TzContract (Url) (Block) (Rpc) in
+    let cinfo = Contract.mk_data contract_id in
+    Db.write_contract_info cinfo
   in
 
-  let module TzInfo : BCinfo = struct
-    let getIp () = MOptions.getAddress()
-    let getPort () = MOptions.getPort()
-    let getBranch () = MOptions.getBranch()
-  end in
-  let module Writer = Make_Writer (struct
-      let path = MOptions.getPath()
-      let contract = contract_id
-    end) in
+  let sync _ =
+    let module TzInfo : BCinfo = struct
+      let getIp () = MOptions.getAddress()
+      let getPort () = MOptions.getPort()
+      let getBranch () = MOptions.getBranch()
+    end in
+    let module Url = Make_TzURL (TzInfo) in
+    let module Block = Make_TzBlock (Url) (Rpc) in
+    let module Contract = Make_TzContract (Url) (Block) (Rpc) in
+    let module Pool = Make_Pool (Contract) (Db) in
+    let module Explorer = Make_ContractExplorer (Block) (Contract) (Db) (Pool) in
+    let init_block = "head" in
+    let block_id   = Block.mk_id init_block in
+    let block_data = Block.mk_data init_block in
+    let contract_ids = Db.get_contract_ids_head () in
+    Pool.make contract_ids;
+    Pool.init block_data.timestamp block_id.hash;
+    Explorer.explore block_id.hash;
+    List.iter (fun (x,_) -> Db.write_head block_id.hash x) contract_ids;
+    print_endline "";
+  in
 
-  if !MOptions.force
-  then Writer.clear();
+  let fill_storage_flat _ =
+    let process_storage_flat contract_id =
+      let storage_type = Db.get_storage_type contract_id in
+      let storage_id_values = Db.get_storage_id_values_from_contract_id contract_id in
+      let s = List.map (fun (x, y) -> (x, Jsontoflat.flatten_storage storage_type y)) storage_id_values in
+      Db.write_storage_flat s
+    in
+    let l : string list = Db.get_contract_ids() in
+    List.iter process_storage_flat l
+  in
 
-  let fblock = Writer.get_head_content contract_id in
-
-  match !MOptions.fill_storage_flat with
-  | true ->
-    begin
-      let process_storage_flat () =
-        let storage_type = Writer.get_storage_type () in
-        let storage_id_values = Writer.get_storage_id_values () in
-        let s = List.map (fun (x, y) -> (x, Jsontoflat.flatten_storage storage_type y)) storage_id_values in
-        Writer.write_storage_flat s
-      in
-      (* get_contract_ids()
-         |> List.iter (fun x -> process_storage_flat x) *)
-      process_storage_flat ()
-    end
-  | _ ->
-    begin
-      Writer.open_logs();
-      let module Url = Make_TzURL (TzInfo) in
-      let module Block = Make_TzBlock (Url) (Rpc) in
-      let module Contract = Make_TzContract (Url) (Block) (Rpc) in
-      let module Explorer = Make_ContractExplorer (Block) (Contract) (Writer) in
-      let init_block = "head" in
-      begin
-        match Contract.mk "" init_block contract_id with
-        | Some c ->
-          begin
-            let cinfo = Contract.mk_data contract_id in
-            let block = Block.mk_id "head" in
-            Writer.write_contract_info cinfo block.hash;
-            Explorer.explore contract_id c { hash=""; previous=init_block } fblock
-          end
-        | _ -> Format.printf "Contract not found in %s@." init_block
-      end;
-      Writer.close_logs()
-    end
+  Db.open_logs ();
+  begin
+    match !MOptions.cmd with
+    | AddContract arg -> add_contract arg
+    | Sync            -> sync ()
+    | FillStorageFlat -> fill_storage_flat ()
+    | _ -> ()
+  end;
+  Db.close_logs()
 
 let main () =
   let print_version () = Format.printf "%s@." version; exit 0 in
   let arg_list = Arg.align [
-      "--force", Arg.Set (MOptions.force), " Force";
-      "--fill-storage-flat", Arg.Set (MOptions.fill_storage_flat), " Fill storage flat";
+      "--add-contract", Arg.String (fun s -> MOptions.cmd := AddContract s), "<contract_id> Add contract <contract_id>";
+      "--sync", Arg.Unit (fun _ -> MOptions.cmd := Sync), " Synchronise database";
+      "--fill-storage-flat", Arg.Unit (fun _ -> MOptions.cmd := FillStorageFlat), " Fill storage flat";
       "--address", Arg.String (MOptions.setAddress), "<address> Set address";
       "--branch", Arg.String (MOptions.setBranch), "<branch> Set branch";
       "--port", Arg.String (MOptions.setPort), "<port> Set port";
@@ -477,10 +549,11 @@ let main () =
       "--version", Arg.Unit (fun () -> print_version ()), " Same as -v";
     ] in
   let arg_usage = String.concat "\n" [
-      "usage : bctojson [OPTIONS] <contract_id>";
+      "usage : bctojson [OPTIONS]";
       "";
       "Available options:";
     ] in
-  Arg.parse arg_list process arg_usage
+  Arg.parse arg_list (fun (s : string) -> print_endline s) arg_usage;
+  process ()
 
 let _ = main ()
