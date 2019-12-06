@@ -80,6 +80,7 @@ type block_data = {
 type contract_info = {
   id : string;
   storage_type : string;
+  storage_type_flat : string;
   entries : string list;
 }
 [@@deriving yojson, show {with_path = false}]
@@ -157,6 +158,7 @@ module Make_Writer (Dirs : sig
       Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
                       id VARCHAR(37) PRIMARY KEY, \
                       storage_type text NOT NULL, \
+                      storage_type_flat text, \
                       entries text NOT NULL, \
                       head text NOT NULL \
                       );"
@@ -208,10 +210,11 @@ module Make_Writer (Dirs : sig
 
   let write_contract_info (c : contract_info) head =
     let insert : string =
-      Printf.sprintf "INSERT OR REPLACE INTO %s VALUES('%s', '%s', '%s', '%s');"
+      Printf.sprintf "INSERT OR REPLACE INTO %s VALUES('%s', '%s', '%s', '%s', '%s');"
         table_info
         c.id
         c.storage_type
+        c.storage_type_flat
         (List.fold_left (fun (accu : string) (x : string) -> accu ^ " " ^ x) "" c.entries)
         head
     in
@@ -364,9 +367,13 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
       ) ""
 
   let mk_data chash =
-    let json = Rpc.url_to_json (Url.getContract "head" chash) in {
+    let json = Rpc.url_to_json (Url.getContract "head" chash) in
+    let storage_type = json_to_storage_type json in
+    let storage_type_flat = Jsontoflat.flatten_typ storage_type in
+     {
       id = chash;
-      storage_type = json_to_storage_type json;
+      storage_type = storage_type;
+      storage_type_flat = storage_type_flat;
       entries = [];
     }
 
