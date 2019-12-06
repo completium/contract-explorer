@@ -222,7 +222,7 @@ and pp_named_sftype_json fmt (s,t) =
 
 let pp_val_json fmt (_s,_t,v) =
     (* Format.fprintf fmt "\"name\":\"%a\",\"type\":%a,\"value\":%a" *)
-    Format.fprintf fmt "\"value\":%a"
+    Format.fprintf fmt "%a"
     pp_sfval_json v
 
 let pp_typ_json fmt (s,t,_v) =
@@ -232,7 +232,7 @@ let pp_typ_json fmt (s,t,_v) =
     pp_sftype_json t
 
 let pp_vals_json fmt st =
-    Format.fprintf fmt "[{%a}@\n]"
+    Format.fprintf fmt "[%a@\n]"
     (pp_list "},{" pp_val_json) st
 
 let pp_typs_json fmt st =
