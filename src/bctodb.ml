@@ -76,6 +76,7 @@ type op = {
   source : string;
   destination : string;
   parameters : string;
+  amount: string;
 }
 [@@deriving yojson, show {with_path = false}]
 
@@ -197,7 +198,8 @@ module Make_Db : Db = struct
                       timestamp date NOT NULL, \
                       source VARCHAR(37) NOT NULL, \
                       destination VARCHAR(37) NOT NULL, \
-                      parameters text \
+                      parameters text, \
+                      amount text \
                       );"
 
         table_ops
@@ -240,7 +242,7 @@ module Make_Db : Db = struct
 
   let write_op contract_id (op : op) =
     let insert : string =
-      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', '%s', '%s', '%s');"
+      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', '%s', '%s', '%s', '%s');"
         table_ops
         op.hash
         contract_id
@@ -248,6 +250,7 @@ module Make_Db : Db = struct
         op.source
         op.destination
         op.parameters
+        op.amount
     in
     exec_cmd insert
 
@@ -348,6 +351,7 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
                     source = c |> member "source" |> to_string;
                     destination = c |> member "destination" |> to_string;
                     parameters = c |> member "parameters" |> Safe.to_string;
+                    amount = c |> member "amount" |> Safe.to_string;
                   }]
                 | _ -> acc
               ) acc
