@@ -408,7 +408,7 @@ module type Pool = sig
   val set_contract : string -> storage -> unit
   val is_not_empty : unit -> bool
 end
-module Make_Pool (Contract : Contract) (Db : Db) : Pool = struct
+module Make_Pool (Contract : Contract) : Pool = struct
   let heads : (string * string option) list ref = ref []
   let storages : (string * storage) list ref = ref []
 
@@ -441,14 +441,6 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Db : Db) (Po
     let block = Block.mk_id block_hash in
     (* dump operations *)
     let data = Block.mk_data block.hash in
-    let contract_ids = Pool.get_contract_ids () in
-    List.iter (fun op ->
-        let { hash=_; source=src; destination=dst } = op in
-        if (List.mem src contract_ids)
-        then Db.write_op src op;
-        if (List.mem dst contract_ids)
-        then Db.write_op dst op;
-      ) data.operations;
     print_string ("."); flush stdout;
     let l : (string * string option) list = Pool.get_contract_ids_head () in
     List.iter (fun (contract_id, contract_head) ->
@@ -472,6 +464,14 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Db : Db) (Po
             Pool.remove_contract contract_id
           end
       ) l;
+    let contract_ids = Pool.get_contract_ids () in
+    List.iter (fun op ->
+        let { hash=_; source=src; destination=dst } = op in
+        if (List.mem src contract_ids)
+        then Db.write_op src op;
+        if (List.mem dst contract_ids)
+        then Db.write_op dst op;
+      ) data.operations;
     if Pool.is_not_empty()
     then explore block.previous
 
@@ -502,7 +502,7 @@ let process _ =
     let module Url = Make_TzURL (TzInfo) in
     let module Block = Make_TzBlock (Url) (Rpc) in
     let module Contract = Make_TzContract (Url) (Block) (Rpc) in
-    let module Pool = Make_Pool (Contract) (Db) in
+    let module Pool = Make_Pool (Contract) in
     let module Explorer = Make_ContractExplorer (Block) (Contract) (Db) (Pool) in
     let init_block = "head" in
     let block_id   = Block.mk_id init_block in
