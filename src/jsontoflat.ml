@@ -5,6 +5,10 @@ open Util
 let storage = "{\"prim\":\"Pair\",\"args\":[{\"prim\":\"Pair\",\"args\":[{\"prim\":\"Pair\",\"args\":[{\"prim\":\"Pair\",\"args\":[{\"int\":\"808\"},{\"prim\":\"False\"}]},{\"prim\":\"Pair\",\"args\":[{\"bytes\":\"ab\"},{\"int\":\"1\"}]}]},{\"prim\":\"Pair\",\"args\":[{\"prim\":\"Pair\",\"args\":[[{\"int\":\"20\"},{\"int\":\"21\"}],[{\"prim\":\"Elt\",\"args\":[{\"int\":\"30\"},{\"int\":\"30\"}]},{\"prim\":\"Elt\",\"args\":[{\"int\":\"31\"},{\"int\":\"31\"}]},{\"prim\":\"Elt\",\"args\":[{\"int\":\"32\"},{\"int\":\"32\"}]}]]},{\"prim\":\"Pair\",\"args\":[[{\"prim\":\"Elt\",\"args\":[{\"int\":\"40\"},[{\"int\":\"400\"},{\"int\":\"401\"},{\"int\":\"402\"}]]},{\"prim\":\"Elt\",\"args\":[{\"int\":\"50\"},[{\"int\":\"500\"},{\"int\":\"501\"},{\"int\":\"502\"}]]}],[{\"prim\":\"Elt\",\"args\":[{\"int\":\"60\"},[{\"prim\":\"Elt\",\"args\":[{\"int\":\"70\"},{\"int\":\"80\"}]},{\"prim\":\"Elt\",\"args\":[{\"int\":\"71\"},{\"int\":\"81\"}]}]]},{\"prim\":\"Elt\",\"args\":[{\"int\":\"61\"},[{\"prim\":\"Elt\",\"args\":[{\"int\":\"77\"},{\"int\":\"88\"}]},{\"prim\":\"Elt\",\"args\":[{\"int\":\"99\"},{\"int\":\"101\"}]}]]}]]}]}]},{\"prim\":\"Pair\",\"args\":[{\"prim\":\"Pair\",\"args\":[{\"prim\":\"Pair\",\"args\":[[{\"prim\":\"Elt\",\"args\":[{\"int\":\"1001\"},{\"prim\":\"Pair\",\"args\":[{\"int\":\"1002\"},{\"string\":\"myval0\"}]}]},{\"prim\":\"Elt\",\"args\":[{\"int\":\"1003\"},{\"prim\":\"Pair\",\"args\":[{\"int\":\"1004\"},{\"string\":\"myval1\"}]}]}],{\"int\":\"2\"}]},{\"prim\":\"Pair\",\"args\":[{\"prim\":\"Some\",\"args\":[{\"int\":\"3\"}]},[{\"int\":\"777\"},{\"int\":\"888\"},{\"int\":\"999\"}]]}]},{\"prim\":\"Pair\",\"args\":[{\"prim\":\"Pair\",\"args\":[{\"string\":\"mystr\"},{\"prim\":\"Unit\"}]},{\"prim\":\"Pair\",\"args\":[{\"int\":\"4\"},{\"string\":\"myval\"}]}]}]}]}"
 let storage_type = "{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"big_map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"int\"}],\"annots\":[\"%mbmap\"]},{\"prim\":\"bool\",\"annots\":[\"%mbool\"]}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"bytes\",\"annots\":[\"%mbytes\"]},{\"prim\":\"int\",\"annots\":[\"%mint\"]}]}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"list\",\"args\":[{\"prim\":\"int\"}],\"annots\":[\"%mlist\"]},{\"prim\":\"map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"int\"}],\"annots\":[\"%mmap\"]}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"list\",\"args\":[{\"prim\":\"int\"}]}],\"annots\":[\"%mmaplist\"]},{\"prim\":\"map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"int\"}]}],\"annots\":[\"%mmapmap\"]}]}]}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"pair\",\"args\":[{\"prim\":\"int\",\"annots\":[\"%id\"]},{\"prim\":\"string\",\"annots\":[\"%value\"]}]}],\"annots\":[\"%mmapmyrecord\"]},{\"prim\":\"nat\",\"annots\":[\"%mnat\"]}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"option\",\"args\":[{\"prim\":\"int\"}],\"annots\":[\"%moption\"]},{\"prim\":\"set\",\"args\":[{\"prim\":\"int\"}],\"annots\":[\"%mset\"]}]}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"string\",\"annots\":[\"%mstring\"]},{\"prim\":\"unit\",\"annots\":[\"%munit\"]}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"int\",\"annots\":[\"%id\"]},{\"prim\":\"string\",\"annots\":[\"%value\"]}],\"annots\":[\"%myr\"]}]}]}]}"
 let storage_type2 = "{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"big_map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"int\"}]},{\"prim\":\"bool\"}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"bytes\"},{\"prim\":\"int\"}]}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"list\",\"args\":[{\"prim\":\"int\"}]},{\"prim\":\"map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"int\"}]}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"list\",\"args\":[{\"prim\":\"int\"}]}]},{\"prim\":\"map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"int\"}]}]}]}]}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"map\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"pair\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"string\"}]}]},{\"prim\":\"nat\"}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"option\",\"args\":[{\"prim\":\"int\"}]},{\"prim\":\"set\",\"args\":[{\"prim\":\"int\"}]}]}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"pair\",\"args\":[{\"prim\":\"string\"},{\"prim\":\"unit\"}]},{\"prim\":\"pair\",\"args\":[{\"prim\":\"int\"},{\"prim\":\"string\"}]}]}]}]}"
+
+let param_type = "{\"prim\": \"or\",\"args\": [{\"prim\": \"int\",\"annots\": [\"%aaa\"]},{\"prim\": \"string\",\"annots\": [\"%bbb\"]}]}"
+let param_val  = "{\"prim\": \"Left\",\"args\": [{\"int\": \"1\"}]}"
+let param_val2  = "{\"prim\": \"Right\",\"args\": [{\"string\": \"toto\"}]}"
 (* Michelson value ----------------------------------------------------------*)
 
 type ordered =
@@ -20,6 +24,8 @@ type mvalue =
 | Munit
 | Moption of mvalue option
 | Mpair of (mvalue * mvalue)
+| Mleft of mvalue
+| Mright of mvalue
 | Melt of (mvalue * mvalue)
 | Munion of (mvalue * mvalue)
 | Mlist of mvalue list
@@ -89,12 +95,14 @@ type sftype =
 | Foption of sftype
 | Flist of sftype
 | Fset of sftype
-| Frecord of (string * sftype) list
 | Fmap of sftype * sftype
 | Fbigmap of sftype * sftype
+| Frecord of (string * sftype) list
+| For of (string * sftype) list
 [@@deriving yojson, show {with_path = false}]
 
 type sfval =
+| Vunit
 | Velt of string
 | Vpair of sfval * sfval
 | Vlist of sfval list
@@ -125,8 +133,9 @@ let rec sftype_to_string wp = function
 | Flist t -> with_paren wp ("list of "^(sftype_to_string true t))
 | Fmap (t1,t2) -> with_paren wp ("map of "^(sftype_to_string true t1)^" to "^(sftype_to_string true t2))
 | Fbigmap (t1,t2) -> with_paren wp ("big map of "^(sftype_to_string true t1)^" to "^(sftype_to_string true t2))
-| Frecord l -> with_paren wp ("record { "^(String.concat "; "(List.map (fun (s,t) -> s^" : "^(sftype_to_string false t)) l))^" }")
 | Fset t -> with_paren wp ("set of "^(sftype_to_string true t))
+| Frecord l -> with_paren wp ("record { "^(String.concat "; "(List.map (fun (s,t) -> s^" : "^(sftype_to_string false t)) l))^" }")
+| For l -> with_paren wp (String.concat " or "(List.map (fun (s,t) -> with_paren true (s^" : "^(sftype_to_string false t))) l))
 | _ -> "unit"
 
 let pp_sftype fmt t = pp_str fmt (sftype_to_string false t)
@@ -136,6 +145,7 @@ exception ExpectedPair
 let is_big_map = function Fbigmap _ -> true | _ -> false
 
 let rec pp_sfval t fmt = function
+| Vunit -> pp_str fmt "unit"
 | Velt e when (not (is_big_map t)) -> pp_str fmt e
 | Vlist l -> begin
     match t with
@@ -179,6 +189,7 @@ let pp_st fmt st =
     (pp_list ";@\n" pp_sfield) st
 
 let rec pp_sfval_json fmt = function
+| Vunit -> Format.fprintf fmt "{\"val\":\"unit\"}"
 | Velt s -> Format.fprintf fmt "{\"val\":\"%a\"}" pp_str s
 | Vpair (v1, v2) ->
     Format.fprintf fmt "{\"val\":\"pair\",\"args\":[%a,%a]}"
@@ -214,6 +225,9 @@ let rec pp_sftype_json fmt = function
 | Frecord l ->
     Format.fprintf fmt "{\"val\":\"record\",\"args\":[%a]}"
     (pp_list "," pp_named_sftype_json) l
+| For l ->
+    Format.fprintf fmt "{\"val\":\"or\",\"args\":[%a]}"
+    (pp_list "," pp_named_sftype_json) l
 | _ -> Format.fprintf fmt "{\"val\":\"unit\"}"
 and pp_named_sftype_json fmt (s,t) =
     Format.fprintf fmt "{\"val\":\"%a\",\"args\":[%a]}"
@@ -231,6 +245,12 @@ let pp_typ_json fmt (s,t,_v) =
     pp_str s
     pp_sftype_json t
 
+let pp_sfield_json fmt (s,t,v) =
+    Format.fprintf fmt "\"name\":\"%a\",\"type\":%a,\"value\":%a"
+    pp_str s
+    pp_sftype_json t
+    pp_sfval_json v
+
 let pp_vals_json fmt st =
     Format.fprintf fmt "[%a@\n]"
     (pp_list "},{" pp_val_json) st
@@ -238,6 +258,10 @@ let pp_vals_json fmt st =
 let pp_typs_json fmt st =
     Format.fprintf fmt "[{%a}@\n]"
     (pp_list "},{" pp_typ_json) st
+
+let pp_storage_json fmt st =
+    Format.fprintf fmt "[{%a}@\n]"
+    (pp_list "},{" pp_sfield_json) st
 
 (* Conversions --------------------------------------------------------------*)
 
@@ -265,6 +289,10 @@ let rec json_to_mtype (json : Safe.t) : amtype =
         | "pair" -> begin
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] -> (get_annot keys json, Tpair (json_to_mtype arg1, json_to_mtype arg2))
+            | _ -> raise (ExpectedNbargs 2) end
+        | "or" -> begin
+            match json |> member "args" |> to_list with
+            | arg1 :: arg2 :: [] -> (get_annot keys json, Tunion (json_to_mtype arg1, json_to_mtype arg2))
             | _ -> raise (ExpectedNbargs 2) end
         | "big_map" -> begin
             match json |> member "args" |> to_list with
@@ -314,6 +342,14 @@ let rec json_to_mvalue json : mvalue =
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] -> Mpair (json_to_mvalue arg1, json_to_mvalue arg2)
             | _ -> raise (ExpectedNbargs 2) end
+        | "Left" -> begin
+            match json |> member "args" |> to_list with
+            | arg :: [] -> Mleft (json_to_mvalue arg)
+            | _ -> raise (ExpectedNbargs 1) end
+        | "Right" -> begin
+            match json |> member "args" |> to_list with
+            | arg :: [] -> Mright (json_to_mvalue arg)
+            | _ -> raise (ExpectedNbargs 1) end
         | "Elt" -> begin
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] -> Melt (json_to_mvalue arg1, json_to_mvalue arg2)
@@ -345,9 +381,20 @@ match value with
 | Mpair (v1,v2) -> fold_value (fold_value acc v1) v2
 | _ as v -> acc @ [v]
 
-let rec  fold_type acc typ : amtype list =
+let rec fold_left_right lacc racc value : mvalue list =
+match value with
+| Mleft v -> fold_left_right lacc (racc@[Munit]) v
+| Mright v -> fold_left_right (lacc@[Munit]) racc v
+| _ as v -> lacc @ [v] @ racc
+
+let rec  fold_pair acc typ : amtype list =
 match typ with
-| (_,Tpair (t1,t2)) -> fold_type (fold_type acc t1) t2
+| (_,Tpair (t1,t2)) -> fold_pair (fold_pair acc t1) t2
+| _ as t -> acc @ [t]
+
+let rec  fold_union acc typ : amtype list =
+match typ with
+| (_,Tunion (t1,t2)) -> fold_union (fold_union acc t1) t2
 | _ as t -> acc @ [t]
 
 let rec  fold_type_none acc typ : amtype list =
@@ -363,6 +410,7 @@ match stype, svalue with
 let lbl_to_str i = function None -> "f"^(string_of_int i) | Some l -> l
 
 let rec mval_to_sval = function
+| Munit -> Vunit
 | Mordered (Mint i) -> Velt (string_of_int i)
 | Mordered (Mnat n) -> Velt (string_of_int n)
 | Mordered (Mbytes b) -> Velt (Bytes.to_string b)
@@ -377,6 +425,12 @@ let rec mval_to_sval = function
 | Mpair _ as v ->
     let lv = List.map mval_to_sval (fold_value [] v) in
     Vlist lv
+| Mleft _ as v ->
+    let lv = List.map mval_to_sval (fold_left_right [] [] v) in
+    Vlist lv
+| Mright _ as v ->
+    let lv = List.map mval_to_sval (fold_left_right [] [] v) in
+    Vlist lv
 | _ -> Velt ""
 
 let rec mtyp_to_styp = function
@@ -390,12 +444,19 @@ let rec mtyp_to_styp = function
 | Tmap (t1,t2) -> Fmap (mtyp_to_styp (Tordered t1), mtyp_to_styp t2)
 | Tbigmap (t1,t2) -> Fbigmap (mtyp_to_styp (Tordered t1), mtyp_to_styp t2)
 | Tpair _ as t ->
-    let lt = fold_type [] (None,t) in
-    let ln = List.mapi (fun i (s,t) ->
-        match s with
-        | None -> ("r"^(string_of_int (i+1)),t)
-        | Some s -> (s,t)) lt in
-    Frecord (List.map (fun (s,t) -> s, mtyp_to_styp t) ln)
+  let lt = fold_pair [] (None,t) in
+  let ln = List.mapi (fun i (s,t) ->
+      match s with
+      | None -> ("r"^(string_of_int (i+1)),t)
+      | Some s -> (s,t)) lt in
+  Frecord (List.map (fun (s,t) -> s, mtyp_to_styp t) ln)
+| Tunion _ as t ->
+  let lt = fold_union [] (None,t) in
+  let ln = List.mapi (fun i (s,t) ->
+      match s with
+      | None -> ("r"^(string_of_int (i+1)),t)
+      | Some s -> (s,t)) lt in
+  For (List.map (fun (s,t) -> s, mtyp_to_styp t) ln)
 | Tset t -> Fset (mtyp_to_styp (Tordered t))
 | _ -> Funit
 
@@ -430,3 +491,16 @@ let flatten_typ typ =
   let stype = json_to_mtype storage_type in
   let storage = mk_storage_typ stype in
   Format.asprintf "%a" pp_typs_json storage
+
+let _ =
+  let param = Safe.from_string param_val2 in
+  let param_type = Safe.from_string param_type in
+  print_endline (Safe.to_string param);
+  print_endline (Safe.to_string param_type);
+  let param = json_to_mvalue param in
+  let param_type = json_to_mtype param_type in
+  Format.fprintf Format.std_formatter "%a@\n" pp_mvalue param;
+  Format.fprintf Format.std_formatter "%a@\n" pp_amtype param_type;
+  let storage = mk_storage param_type param in
+  Format.fprintf Format.std_formatter "%a@\n" pp_storage storage;
+  Format.fprintf Format.std_formatter "%a" pp_st storage

@@ -400,8 +400,6 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
 
 end
 
-
-
 module type Pool = sig
   val make : (string * string option) list -> unit
   val init : string -> string -> unit
