@@ -386,6 +386,9 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
                     amount = c |> member "amount" |> Safe.to_string;
                     bigmapdiffs = get_big_map_diffs c;
                   }]
+                | "origination" ->
+                print_endline (Safe.to_string op);
+                acc
                 | _ -> acc
               ) acc
           ) acc
