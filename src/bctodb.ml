@@ -79,6 +79,7 @@ type big_map_diff = {
 [@@deriving yojson, show {with_path = false}]
 
 type op = {
+  kind : string;
   hash : string;
   timestamp : string;
   source : string;
@@ -370,6 +371,14 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
       else []
     else []
 
+  let get_origination_dest json =
+    let json = json |> member "metadata" in
+    let entries = json |> keys in
+    if List.mem "originated_contracts" entries then
+      let json = json |> member "originated_contracts" |> to_list in
+      List.nth json 0 |> to_string (* shall we treat all originated contracts ? *)
+    else ""
+
   let json_to_ops timestamp json : op list =
     json |> member "operations" |> to_list |> List.fold_left (fun acc ops ->
         ops |> to_list |> List.fold_left (fun acc op ->
@@ -378,6 +387,7 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
                 let kind = c |> member "kind" |> to_string in
                 match kind with
                 | "transaction" -> acc @ [{
+                    kind = "tr";
                     hash = hash;
                     timestamp = timestamp;
                     source = c |> member "source" |> to_string;
@@ -386,9 +396,16 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
                     amount = c |> member "amount" |> Safe.to_string;
                     bigmapdiffs = get_big_map_diffs c;
                   }]
-                | "origination" ->
-                print_endline (Safe.to_string op);
-                acc
+                | "origination" -> acc @ [{
+                    kind = "org";
+                    hash = hash;
+                    timestamp = timestamp;
+                    source = c |> member "source" |> to_string;
+                    destination = get_origination_dest c;
+                    parameters = "";
+                    amount = "0";
+                    bigmapdiffs = [];
+                }]
                 | _ -> acc
               ) acc
           ) acc
