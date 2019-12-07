@@ -178,8 +178,9 @@ module Make_Db : Db = struct
   let create_table_storages () =
     let create_table_sql =
       Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
-                      hash VARCHAR(52) PRIMARY KEY, \
-                      contract_id VARCHAR(37) NOT NULL, \
+                      id INTEGER PRIMARY KEY AUTOINCREMENT, \
+                      hash VARCHAR(52) NOT NULL, \
+                      contract_id VARCHAR(37), \
                       timestamp date NOT NULL, \
                       storage text NOT NULL, \
                       storage_flat text, \
@@ -193,7 +194,8 @@ module Make_Db : Db = struct
   let create_table_ops () =
     let create_table_sql =
       Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
-                      hash VARCHAR(52) PRIMARY KEY, \
+                      id INTEGER PRIMARY KEY AUTOINCREMENT, \
+                      hash VARCHAR(52) NOT NULL, \
                       contract_id VARCHAR(37) NOT NULL, \
                       timestamp date NOT NULL, \
                       source VARCHAR(37) NOT NULL, \
@@ -230,7 +232,7 @@ module Make_Db : Db = struct
 
   let write_storage contract_id (s : storage) =
     let insert : string =
-      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', '%s', NULL, '%s');"
+      Printf.sprintf "INSERT INTO %s(hash, contract_id, timestamp, storage, balance) VALUES('%s', '%s', '%s', '%s', '%s');"
         table_storages
         s.hash
         contract_id
@@ -242,7 +244,7 @@ module Make_Db : Db = struct
 
   let write_op contract_id (op : op) =
     let insert : string =
-      Printf.sprintf "INSERT INTO %s VALUES('%s', '%s', '%s', '%s', '%s', '%s', '%s');"
+      Printf.sprintf "INSERT INTO %s(hash, contract_id, timestamp, source, destination, parameters, amount) VALUES('%s', '%s', '%s', '%s', '%s', '%s', '%s');"
         table_ops
         op.hash
         contract_id
