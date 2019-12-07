@@ -492,7 +492,7 @@ let flatten_typ typ =
   let storage = mk_storage_typ stype in
   Format.asprintf "%a" pp_typs_json storage
 
-let _ =
+(* let _ =
   let param = Safe.from_string param_val2 in
   let param_type = Safe.from_string param_type in
   print_endline (Safe.to_string param);
@@ -504,3 +504,4 @@ let _ =
   let storage = mk_storage param_type param in
   Format.fprintf Format.std_formatter "%a@\n" pp_storage storage;
   Format.fprintf Format.std_formatter "%a" pp_st storage
+ *)

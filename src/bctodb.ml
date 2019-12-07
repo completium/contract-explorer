@@ -70,6 +70,14 @@ type block_id = {
 }
 [@@deriving yojson, show {with_path = false}]
 
+type big_map_diff = {
+  action : string;
+  mapid : string;
+  key : string;
+  value : string;
+}
+[@@deriving yojson, show {with_path = false}]
+
 type op = {
   hash : string;
   timestamp : string;
@@ -77,6 +85,7 @@ type op = {
   destination : string;
   parameters : string;
   amount: string;
+  bigmapdiffs: big_map_diff list
 }
 [@@deriving yojson, show {with_path = false}]
 
@@ -201,6 +210,7 @@ module Make_Db : Db = struct
                       source VARCHAR(37) NOT NULL, \
                       destination VARCHAR(37) NOT NULL, \
                       parameters text, \
+                      bigmapdiffs text, \
                       amount text \
                       );"
 
@@ -242,9 +252,12 @@ module Make_Db : Db = struct
     in
     exec_cmd insert
 
+  let diffs_to_string diffs = "["^(String.concat "," (List.map (fun d ->
+      Safe.to_string (big_map_diff_to_yojson d)) diffs))^"]"
+
   let write_op contract_id (op : op) =
     let insert : string =
-      Printf.sprintf "INSERT INTO %s(hash, contract_id, timestamp, source, destination, parameters, amount) VALUES('%s', '%s', '%s', '%s', '%s', '%s', '%s');"
+      Printf.sprintf "INSERT INTO %s(hash, contract_id, timestamp, source, destination, parameters, bigmapdiffs, amount) VALUES('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');"
         table_ops
         op.hash
         contract_id
@@ -252,6 +265,7 @@ module Make_Db : Db = struct
         op.source
         op.destination
         op.parameters
+        (diffs_to_string op.bigmapdiffs)
         op.amount
     in
     exec_cmd insert
@@ -340,6 +354,22 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
       previous     = json |> member "header" |> member "predecessor" |> to_string;
     }
 
+  let get_big_map_diffs json =
+    let json = json |> member "metadata" in
+    let entries = json |> keys in
+    if List.mem "operation_result" entries then
+      let json = json |> member "operation_result" in
+      let entries = json |> keys in
+      if List.mem "big_map_diff" entries then
+        List.map (fun bmd -> {
+          action = bmd |> member "action" |> to_string;
+          mapid = bmd |> member "big_map" |> to_string;
+          key = bmd |> member "key" |> Safe.to_string;
+          value = bmd |> member "value" |> Safe.to_string;
+        }) (json |> member "big_map_diff" |> to_list)
+      else []
+    else []
+
   let json_to_ops timestamp json : op list =
     json |> member "operations" |> to_list |> List.fold_left (fun acc ops ->
         ops |> to_list |> List.fold_left (fun acc op ->
@@ -354,6 +384,7 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
                     destination = c |> member "destination" |> to_string;
                     parameters = c |> member "parameters" |> Safe.to_string;
                     amount = c |> member "amount" |> Safe.to_string;
+                    bigmapdiffs = get_big_map_diffs c;
                   }]
                 | _ -> acc
               ) acc
