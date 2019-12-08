@@ -473,31 +473,35 @@ module type Pool = sig
   val get_contract_head : string -> string option
 end
 module Make_Pool (Contract : Contract) : Pool = struct
-  let heads : (string * string option) list ref = ref []
-  let storages : (string * storage) list ref = ref []
+  let heads = ref (Hashtbl.create 0)
+  let storages = ref (Hashtbl.create 0)
 
-  let make l = heads := l
+  let make l =
+    heads := Hashtbl.create (List.length l);
+    List.iter (fun (cid,hd) -> Hashtbl.add !heads cid hd) l
+
   let init timestamp hash =
-    storages := List.map (fun (contract_id, _) ->
-        match  Contract.mk timestamp hash contract_id with
-        | Some v -> contract_id, v
+    storages := Hashtbl.create (Hashtbl.length !heads);
+    Hashtbl.iter (fun cid _ ->
+      match  Contract.mk timestamp hash cid with
+        | Some v -> Hashtbl.add !storages cid v
         | _ -> assert false) !heads
 
   let remove_contract contract_id =
-    let f (a, _) = not (String.equal a contract_id) in
-    heads := List.filter f !heads;
-    storages := List.filter f !storages
-  let get_contract_ids _ = List.map fst !heads
-  let get_contract contract_id = List.assoc contract_id !storages
-  let set_contract contract_id s = storages := List.map (fun (id, st) ->
-      if String.equal contract_id id
-      then (id, s)
-      else (id, st)) !storages
-  let is_not_empty _ = List.length !heads > 0
+    Hashtbl.remove !heads contract_id;
+    Hashtbl.remove !storages contract_id
 
-  let contains contract_id = List.mem_assoc contract_id !heads
-  let get_contract_head contract_id = List.assoc contract_id !heads
+  let get_contract_ids _ = Hashtbl.fold (fun cid _ acc -> acc@[cid]) !heads []
+  let get_contract contract_id = Hashtbl.find !storages contract_id
+  let set_contract contract_id s =
+    if Hashtbl.mem !storages contract_id then
+      Hashtbl.remove !storages contract_id;
+    Hashtbl.add !storages contract_id s
 
+  let is_not_empty _ = Hashtbl.length !heads > 0
+
+  let contains contract_id = Hashtbl.mem !heads contract_id
+  let get_contract_head contract_id = Hashtbl.find !heads contract_id
 end
 
 (* Contract Explorer --------------------------------------------------------*)
@@ -515,7 +519,8 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Db : Db) (Po
     | _ -> begin
       match Contract.mk timestamp block_hash contract_id with
       | Some contract ->
-        Db.write_storage contract_id contract;
+        if String.equal op.destination contract_id then
+          Db.write_storage contract_id contract;
         Db.write_op contract_id op;
       | None -> raise (ContractNotFound contract_id)
       end
