@@ -374,9 +374,14 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
   let get_origination_dest json =
     let json = json |> member "metadata" in
     let entries = json |> keys in
-    if List.mem "originated_contracts" entries then
-      let json = json |> member "originated_contracts" |> to_list in
-      List.nth json 0 |> to_string (* shall we treat all originated contracts ? *)
+    if List.mem "operation_result" entries then
+      let json = json |> member "operation_result" in
+      let entries = json |> keys in
+      (* print_endline (String.concat "\n" entries); *)
+      if List.mem "originated_contracts" entries then
+        let json = json |> member "originated_contracts" |> to_list in
+        List.nth json 0 |> to_string (* shall we treat all originated contracts ? *)
+      else ""
     else ""
 
   let json_to_ops timestamp json : op list =
