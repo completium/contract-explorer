@@ -90,6 +90,9 @@ type op = {
 }
 [@@deriving yojson, show {with_path = false}]
 
+let is_origination op = String.equal "org" op.kind
+let is_transaction op = String.equal "tr" op.kind
+
 type block_data = {
   timestamp    : string;
   operations   : op list;
@@ -463,10 +466,11 @@ module type Pool = sig
   val init : string -> string -> unit
   val remove_contract : string -> unit
   val get_contract_ids : unit -> string list
-  val get_contract_ids_head : unit -> (string * string option) list
   val get_contract : string -> storage
   val set_contract : string -> storage -> unit
   val is_not_empty : unit -> bool
+  val contains : string -> bool
+  val get_contract_head : string -> string option
 end
 module Make_Pool (Contract : Contract) : Pool = struct
   let heads : (string * string option) list ref = ref []
@@ -484,54 +488,53 @@ module Make_Pool (Contract : Contract) : Pool = struct
     heads := List.filter f !heads;
     storages := List.filter f !storages
   let get_contract_ids _ = List.map fst !heads
-  let get_contract_ids_head _ = !heads
   let get_contract contract_id = List.assoc contract_id !storages
   let set_contract contract_id s = storages := List.map (fun (id, st) ->
       if String.equal contract_id id
       then (id, s)
       else (id, st)) !storages
   let is_not_empty _ = List.length !heads > 0
+
+  let contains contract_id = List.mem_assoc contract_id !heads
+  let get_contract_head contract_id = List.assoc contract_id !heads
+
 end
 
 (* Contract Explorer --------------------------------------------------------*)
 
 module Make_ContractExplorer (Block : Block) (Contract : Contract) (Db : Db) (Pool : Pool) = struct
 
+  exception ContractNotFound of string
+
+  let write timestamp block_hash op contract_id =
+    let contract_head = Pool.get_contract_head contract_id in
+    begin
+    match contract_head with
+    | Some head when String.equal head block_hash ->
+      Pool.remove_contract contract_id
+    | _ -> begin
+      match Contract.mk timestamp block_hash contract_id with
+      | Some contract ->
+        Db.write_storage contract_id contract;
+        Db.write_op contract_id op;
+      | None -> raise (ContractNotFound contract_id)
+      end
+    end;
+    if is_origination op && Pool.contains op.destination then
+      Pool.remove_contract op.destination
+
   let rec explore block_hash =
     let block = Block.mk_id block_hash in
     (* dump operations *)
     let data = Block.mk_data block.hash in
     print_string ("."); flush stdout;
-    let l : (string * string option) list = Pool.get_contract_ids_head () in
-    List.iter (fun (contract_id, contract_head) ->
-        match contract_head, Contract.mk data.timestamp block.hash contract_id with
-        | Some f, _ when String.equal f block.hash ->
-          Pool.remove_contract contract_id
-        | _, Some c ->
-          begin
-            let previous_contract = Pool.get_contract contract_id in
-            if not (cmp_contracts previous_contract c)
-            then
-              begin
-                Db.write_storage contract_id previous_contract;
-                Pool.set_contract contract_id c
-              end
-          end
-        | _, None ->
-          begin
-            let previous_contract = Pool.get_contract contract_id in
-            Db.write_storage contract_id previous_contract;
-            Pool.remove_contract contract_id
-          end
-      ) l;
-    let contract_ids = Pool.get_contract_ids () in
+    (* scan operations *)
     List.iter (fun op ->
-        let { hash=_; source=src; destination=dst } = op in
-        if (List.mem src contract_ids)
-        then Db.write_op src op;
-        if (List.mem dst contract_ids)
-        then Db.write_op dst op;
-      ) data.operations;
+      if Pool.contains op.destination then
+        write data.timestamp block.hash op op.destination;
+      if Pool.contains op.source then
+        write data.timestamp block.hash op op.source
+    ) data.operations;
     if Pool.is_not_empty()
     then explore block.previous
 
