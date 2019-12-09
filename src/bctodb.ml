@@ -651,15 +651,13 @@ let process rargs =
   | "alloc" when (String.equal key "null") -> ()
   | "alloc" -> Hashtbl.add map key value
   | "update" | "insert" ->
-      if Hashtbl.mem map key then begin
+      if Hashtbl.mem map key then
         Hashtbl.replace map key value
-      end else begin
+      else
         Hashtbl.add map key value
-      end
   | "remove" ->
-      if Hashtbl.mem map key then begin
+      if Hashtbl.mem map key then
         Hashtbl.remove map key
-      end
   | _ -> raise Not_found
   in
 
