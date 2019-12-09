@@ -10,6 +10,7 @@ type command =
   | Sync
   | AddContract of string
   | FillStorageFlat
+  | GetBigMap of string * string * string
   | None
 [@@deriving show {with_path = false}]
 
@@ -61,6 +62,13 @@ module type BCinfo = sig
   val getBranch : unit -> string
 end
 
+(* pp functions -------------------------------------------------------------*)
+
+let pp_list sep pp =
+  Format.pp_print_list
+    ~pp_sep:(fun fmt () -> Format.fprintf fmt "%(%)" sep)
+    pp
+
 (* BC types -----------------------------------------------------------------*)
 
 type block_id = {
@@ -85,7 +93,7 @@ type op = {
   destination : string;
   parameters : string;
   amount: string;
-  bigmapdiffs: big_map_diff list
+  bigmapdiffs: big_map_diff list;
 }
 [@@deriving yojson, show {with_path = false}]
 
@@ -150,6 +158,7 @@ module type Db = sig
   val write_head : string -> string -> unit
   val get_contract_ids : unit -> string list
   val get_contract_ids_head : unit -> (string * string option) list
+  val get_operations_for : string -> op list
 end
 
 module Make_Db : Db = struct
@@ -231,6 +240,24 @@ module Make_Db : Db = struct
 
   let diffs_to_string diffs = "["^(String.concat "," (List.map (fun d ->
       Safe.to_string (big_map_diff_to_yojson d)) diffs))^"]"
+
+  let string_to_diffs str =
+    let to_diff input =
+      {
+        action = input |> member "action" |> to_string;
+        mapid  = input |> member "mapid"  |> to_string;
+        key    = input |> member "key"    |> to_string;
+        value  = input |> member "value"  |> to_string;
+      } in
+    match str with
+    | Some str ->
+      begin
+        let json =  Safe.from_string str in
+        match json with
+        | `List l -> List.map to_diff l;
+        | _ -> assert false;
+      end
+    | _ -> []
 
   let write_op contract_id (op : op) storage =
     let insert : string =
@@ -316,6 +343,32 @@ module Make_Db : Db = struct
           exec_cmd insert
         end
       ) l
+
+  let get_operations_for contract_id =
+    let select_sql = Printf.sprintf "SELECT kind, hash, timestamp, source, destination, parameters, amount, bigmapdiffs FROM %s WHERE contract_id = '%s' order by timestamp;" table_ops contract_id in
+    let l = ref [] in
+    match Sqlite3.exec db select_sql ~cb:(fun row _ ->
+        match row.(0), row.(1), row.(2), row.(3), row.(4), row.(5), row.(6), row.(7) with
+        | Some k, Some h, Some t, Some s, Some d, Some p, Some a, b ->
+          begin
+            let op : op =
+              {
+                kind = k;
+                hash = h;
+                timestamp = t;
+                source = s;
+                destination = d;
+                parameters = p;
+                amount = a;
+                bigmapdiffs = string_to_diffs b;
+              } in
+            l := op::!l
+          end
+        | _ -> ()
+
+      ) with
+    | Sqlite3.Rc.OK -> List.rev !l
+    | _ -> assert false
 end
 
 (* Tezos --------------------------------------------------------------------*)
@@ -544,7 +597,7 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Db : Db) (Po
 
 end
 
-let process _ =
+let process rargs =
   let module Db = Make_Db in
 
   let add_contract (contract_id : string) =
@@ -593,18 +646,33 @@ let process _ =
     List.iter process_storage_flat l
   in
 
+  let get_big_map (cid, hash, mid) =
+    Format.printf "get_big_map for %s %s %s@\n" cid hash mid;
+    let ops = Db.get_operations_for cid in
+    List.iter (fun op -> Format.printf "[%a]@\n" (pp_list ",@\n" pp_big_map_diff) op.bigmapdiffs) ops;
+    ()
+  in
+
+  let cmd =
+    match List.rev !rargs with
+    | ["get-big-map"; cid; hash; mid ] -> GetBigMap (cid, hash, mid)
+    | _ -> !MOptions.cmd
+  in
+
   Db.open_logs ();
   begin
-    match !MOptions.cmd with
-    | AddContract arg -> add_contract arg
-    | Sync            -> sync ()
-    | FillStorageFlat -> fill_storage_flat ()
+    match cmd with
+    | AddContract arg            -> add_contract arg
+    | Sync                       -> sync ()
+    | FillStorageFlat            -> fill_storage_flat ()
+    | GetBigMap (cid, hash, mid) -> get_big_map (cid, hash, mid)
     | _ -> ()
   end;
   Db.close_logs()
 
 let main () =
   let print_version () = Format.printf "%s@." version; exit 0 in
+  let rargs = ref [] in
   let arg_list = Arg.align [
       "--add-contract", Arg.String (fun s -> MOptions.cmd := AddContract s), "<contract_id> Add contract <contract_id>";
       "--sync", Arg.Unit (fun _ -> MOptions.cmd := Sync), " Synchronise database";
@@ -614,13 +682,17 @@ let main () =
       "--port", Arg.String (MOptions.setPort), "<port> Set port";
       "-v", Arg.Unit (fun () -> print_version ()), " Show version number and exit";
       "--version", Arg.Unit (fun () -> print_version ()), " Same as -v";
+      "--", Arg.Rest (fun arg -> rargs := arg::!rargs), ""
     ] in
   let arg_usage = String.concat "\n" [
-      "usage : bctojson [OPTIONS]";
+      "usage : bctojson [OPTIONS] (-- CMD args)";
+      "";
+      "Available commands:";
+      "  get-big-map <contract_id> <hash> <big_map_id>";
       "";
       "Available options:";
     ] in
   Arg.parse arg_list (fun (s : string) -> print_endline s) arg_usage;
-  process ()
+  process rargs
 
 let _ = main ()
