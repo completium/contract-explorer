@@ -1,7 +1,6 @@
 open Yojson
 open Safe
 open Util
-open Sqlite3
 
 let version = "0.1"
 
@@ -144,8 +143,7 @@ module type Db = sig
   val open_logs : unit -> unit
   val close_logs : unit -> unit
   val write_contract_info : contract_info -> unit
-  val write_storage : string -> storage -> unit
-  val write_op : string -> op -> unit
+  val write_op : string -> op -> string -> string -> unit
   val get_storage_type : string -> string
   val get_storage_id_values_from_contract_id : string -> (string * string) list
   val write_storage_flat : (string * string) list -> unit
@@ -156,22 +154,20 @@ end
 
 module Make_Db : Db = struct
 
-  let db = db_open "bc.db"
+  let db = Sqlite3.db_open "bc.db"
   let table_info     = "contracts_info"
-  let table_storages = "storages"
   let table_ops      = "operations"
 
   let exec_cmd cmd =
-    match exec db cmd with
-    | Rc.OK -> ()
-    | r -> prerr_endline (Rc.to_string r); prerr_endline (errmsg db)
+    match Sqlite3.exec db cmd with
+    | Sqlite3.Rc.OK -> ()
+    | r -> prerr_endline (Sqlite3.Rc.to_string r); prerr_endline (Sqlite3.errmsg db)
 
   let drop_tables table =
     let drop_table_sql = "DROP TABLE IF EXISTS " ^ table ^ ";" in
     exec_cmd drop_table_sql
 
   let clear () =
-    drop_tables table_storages;
     drop_tables table_ops
 
   let create_table_info () =
@@ -188,22 +184,6 @@ module Make_Db : Db = struct
     in
     exec_cmd create_table_sql
 
-  let create_table_storages () =
-    let create_table_sql =
-      Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
-                      id INTEGER PRIMARY KEY AUTOINCREMENT, \
-                      hash VARCHAR(52) NOT NULL, \
-                      contract_id VARCHAR(37), \
-                      timestamp date NOT NULL, \
-                      storage text NOT NULL, \
-                      storage_flat text, \
-                      balance text NOT NULL \
-                      );"
-
-        table_storages
-    in
-    exec_cmd create_table_sql
-
   let create_table_ops () =
     let create_table_sql =
       Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
@@ -215,7 +195,10 @@ module Make_Db : Db = struct
                       destination VARCHAR(37) NOT NULL, \
                       parameters text, \
                       bigmapdiffs text, \
-                      amount text \
+                      amount text, \
+                      storage text NOT NULL, \
+                      storage_flat text, \
+                      balance text NOT NULL
                       );"
 
         table_ops
@@ -224,7 +207,6 @@ module Make_Db : Db = struct
 
   let create_tables () =
     create_table_info ();
-    create_table_storages ();
     create_table_ops ()
 
   let open_logs () =
@@ -244,24 +226,12 @@ module Make_Db : Db = struct
     in
     exec_cmd insert
 
-  let write_storage contract_id (s : storage) =
-    let insert : string =
-      Printf.sprintf "INSERT INTO %s(hash, contract_id, timestamp, storage, balance) VALUES('%s', '%s', '%s', '%s', '%s');"
-        table_storages
-        s.hash
-        contract_id
-        s.timestamp
-        s.storage
-        s.balance
-    in
-    exec_cmd insert
-
   let diffs_to_string diffs = "["^(String.concat "," (List.map (fun d ->
       Safe.to_string (big_map_diff_to_yojson d)) diffs))^"]"
 
-  let write_op contract_id (op : op) =
+  let write_op contract_id (op : op) storage balance =
     let insert : string =
-      Printf.sprintf "INSERT INTO %s(hash, contract_id, timestamp, source, destination, parameters, bigmapdiffs, amount) VALUES('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');"
+      Printf.sprintf "INSERT INTO %s(hash, contract_id, timestamp, source, destination, parameters, bigmapdiffs, amount, storage, balance) VALUES('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');"
         table_ops
         op.hash
         contract_id
@@ -271,51 +241,53 @@ module Make_Db : Db = struct
         op.parameters
         (diffs_to_string op.bigmapdiffs)
         op.amount
+        storage
+        balance
     in
     exec_cmd insert
 
   let get_contract_ids () : string list =
     let select_sql = Printf.sprintf "SELECT id FROM %s;" table_info in
     let l = ref [] in
-    match exec db select_sql ~cb:(fun row _ ->
+    match Sqlite3.exec db select_sql ~cb:(fun row _ ->
         match row.(0) with
         | Some a -> l := a::!l
         | _ -> ()
       ) with
-    | Rc.OK -> !l
+    | Sqlite3.Rc.OK -> !l
     | _ -> assert false
 
   let get_contract_ids_head () : (string * string option) list =
     let select_sql = Printf.sprintf "SELECT id, head FROM %s;" table_info in
     let l : (string * string option) list ref = ref [] in
-    match exec db select_sql ~cb:(fun row _ ->
+    match Sqlite3.exec db select_sql ~cb:(fun row _ ->
         match row.(0), row.(1) with
         | Some a, b -> l := (a, b)::!l
         | _ -> ()
       ) with
-    | Rc.OK -> !l
+    | Sqlite3.Rc.OK -> !l
     | _ -> assert false
 
   let get_storage_type contract_id =
     let select_sql = Printf.sprintf "SELECT storage_type FROM %s WHERE id = '%s';" table_info contract_id in
     let str = ref "" in
-    match exec db select_sql ~cb:(fun row _ ->
+    match Sqlite3.exec db select_sql ~cb:(fun row _ ->
         match row.(0) with
         | Some a -> str := a
         | _ -> ()
       ) with
-    | Rc.OK -> !str
+    | Sqlite3.Rc.OK -> !str
     | _ -> assert false
 
   let get_storage_id_values_from_contract_id contract_id : (string * string) list =
-    let select_sql = Printf.sprintf "SELECT hash, storage FROM %s WHERE contract_id = '%s';" table_storages contract_id in
+    let select_sql = Printf.sprintf "SELECT hash, storage FROM %s WHERE contract_id = '%s';" table_ops contract_id in
     let l = ref [] in
-    match exec db select_sql ~cb:(fun row _ ->
+    match Sqlite3.exec db select_sql ~cb:(fun row _ ->
         match row.(0), row.(1) with
         | Some a, Some b -> l := (a, b)::!l
         | _ -> ()
       ) with
-    | Rc.OK -> !l
+    | Sqlite3.Rc.OK -> !l
     | _ -> assert false
 
   let write_head head contract_id =
@@ -332,7 +304,7 @@ module Make_Db : Db = struct
         begin
           let insert : string =
             Printf.sprintf "UPDATE %s SET storage_flat = '%s' WHERE hash = '%s';"
-              table_storages
+              table_ops
               value
               id
           in
@@ -411,7 +383,7 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
                     destination = get_origination_dest c;
                     parameters = "";
                     amount = "0";
-                    bigmapdiffs = [];
+                    bigmapdiffs = get_big_map_diffs c;
                   }]
                 | _ -> acc
               ) acc
@@ -534,9 +506,7 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Db : Db) (Po
     begin
       match Contract.mk timestamp block_hash contract_id with
       | Some contract ->
-        if String.equal op.destination contract_id then
-          Db.write_storage contract_id contract;
-        Db.write_op contract_id op;
+        Db.write_op contract_id op contract.storage contract.balance;
       | None -> raise (ContractNotFound contract_id)
     end;
     if is_origination op && Pool.contains op.destination then
