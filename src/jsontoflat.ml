@@ -21,11 +21,11 @@ type ordered =
 | Mkeyhash of string
 | Mmutez of int
 | Mtimestamp of string
+| Mbool of bool
 [@@deriving yojson, show {with_path = false}]
 
 type mvalue =
 | Mordered of ordered
-| Mbool of bool
 | Munit
 | Mcontract of mvalue
 | Moption of mvalue option
@@ -49,6 +49,7 @@ type ordered_mtype =
 | Tkey
 | Tkeyhash
 | Tmutez
+| Tbool
 | Ttimestamp
 [@@deriving yojson, show {with_path = false}]
 
@@ -58,7 +59,6 @@ type mtype =
 | Tordered of ordered_mtype
 | Tcontract of mtype
 | Toption of mtype
-| Tbool
 | Tunit
 | Tlist of mtype
 | Tmap of ordered_mtype * mtype
@@ -88,7 +88,7 @@ let rec mtype_to_string = function
 | Tordered Ttimestamp -> "TIMESTAMP"
 | Tordered Tbytes -> "BYTES"
 | Toption t -> "OPTION of ("^(mtype_to_string t)^")"
-| Tbool -> "BOOL"
+| Tordered Tbool -> "BOOL"
 | Tunit -> "UNIT"
 | Tcontract t -> "CONTRACT of ("^(mtype_to_string t)^")"
 | Tlist t -> "LIST of ("^(mtype_to_string t)^")"
@@ -362,7 +362,7 @@ let rec json_to_mtype (json : Safe.t) : amtype =
             match json |> member "args" |> to_list with
             | arg :: [] -> (get_annot keys json, Tset (amtype_to_ordered (json_to_mtype arg)))
             | _ -> raise (ExpectedNbargs ("set",1)) end
-        | "bool" -> (get_annot keys json, Tbool)
+        | "bool" -> (get_annot keys json, Tordered Tbool)
         | "int" -> (get_annot keys json, Tordered Tint)
         | "nat" -> (get_annot keys json, Tordered Tnat)
         | "string" -> (get_annot keys json, Tordered Tstr)
@@ -413,8 +413,8 @@ let rec json_to_mvalue json : mvalue =
             | arg1 :: arg2 :: [] -> Melt (json_to_mvalue arg1, json_to_mvalue arg2)
             | _ -> raise (ExpectedNbargs ("Elt",2)) end
         | "Unit" -> Munit
-        | "False" -> Mbool false
-        | "True" -> Mbool true
+        | "False" -> Mordered (Mbool false)
+        | "True" -> Mordered (Mbool true)
         | "Some" -> begin
             match json |> member "args" |> to_list with
             | arg :: [] -> Moption (Some (json_to_mvalue arg))
@@ -481,7 +481,7 @@ let rec mval_to_sval = function
 | Mordered (Mtimestamp s) -> Velt s
 | MLambda l -> Vlist (List.map mval_to_sval l)
 | Moption None -> Velt ""
-| Mbool b -> Velt (string_of_bool b)
+| Mordered (Mbool b) -> Velt (string_of_bool b)
 | Mlist l -> Vlist (List.map (fun v ->
     match v with
     | Melt (v1,v2) -> Vpair (mval_to_sval v1, mval_to_sval v2)
@@ -502,7 +502,7 @@ let rec mtyp_to_styp = function
 | Tordered Tnat -> Fnat
 | Tordered Tbytes -> Fbytes
 | Tordered Tstr -> Fstr
-| Tbool -> Fbool
+| Tordered Tbool -> Fbool
 | Tordered Taddress -> Faddress
 | Tordered Tkey -> Fkey
 | Tordered Tkeyhash -> Fkeyhash
