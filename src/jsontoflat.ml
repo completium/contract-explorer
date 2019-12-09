@@ -371,6 +371,7 @@ let rec json_to_mtype (json : Safe.t) : amtype =
         | "int" -> (get_annot keys json, Tordered Tint)
         | "nat" -> (get_annot keys json, Tordered Tnat)
         | "string" -> (get_annot keys json, Tordered Tstr)
+        | "operation" -> (get_annot keys json, Toperation)
         | "bytes" -> (get_annot keys json, Tordered Tbytes)
         | "option" -> begin
             match json |> member "args" |> to_list with
