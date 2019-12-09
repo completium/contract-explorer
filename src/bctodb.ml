@@ -649,8 +649,13 @@ let process rargs =
   let get_big_map (cid, hash, mid) =
     Format.printf "get_big_map for %s %s %s@\n" cid hash mid;
     let ops = Db.get_operations_for cid in
-    List.iter (fun op -> Format.printf "[%a]@\n" (pp_list ",@\n" pp_big_map_diff) op.bigmapdiffs) ops;
-    ()
+    let map = Hashtbl.create 0 in
+    List.iter (fun op ->
+      List.iter (fun bmd ->
+        Jsontoflat.fold_map_diff map bmd.action bmd.key bmd.value)
+      op.bigmapdiffs)
+    ops;
+    print_endline (Jsontoflat.to_sfval map)
   in
 
   let cmd =
@@ -666,7 +671,7 @@ let process rargs =
     | Sync                       -> sync ()
     | FillStorageFlat            -> fill_storage_flat ()
     | GetBigMap (cid, hash, mid) -> get_big_map (cid, hash, mid)
-    | _ -> ()
+    | _ -> print_endline "unknown command"
   end;
   Db.close_logs()
 
