@@ -587,22 +587,6 @@ let flatten_typ typ =
 
  (* reconstruct big_map ------------------------------------------------------*)
 
-let fold_map_diff map action key value =
-  match action with
-  | "alloc" when (String.equal key "null") -> ()
-  | "alloc" -> Hashtbl.add map key value
-  | "update" | "insert" ->
-      if Hashtbl.mem map key then begin
-        Hashtbl.replace map key value
-      end else begin
-        Hashtbl.add map key value
-      end
-  | "remove" ->
-      if Hashtbl.mem map key then begin
-        Hashtbl.remove map key
-      end
-  | _ -> raise Not_found
-
 let to_sfval map =
   let res = Vlist (Hashtbl.fold (fun k v acc ->
     let key = Safe.from_string k |> json_to_mvalue |> mval_to_sval in

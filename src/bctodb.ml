@@ -646,6 +646,23 @@ let process rargs =
     List.iter process_storage_flat l
   in
 
+  let fold_map_diff map action key value =
+  match action with
+  | "alloc" when (String.equal key "null") -> ()
+  | "alloc" -> Hashtbl.add map key value
+  | "update" | "insert" ->
+      if Hashtbl.mem map key then begin
+        Hashtbl.replace map key value
+      end else begin
+        Hashtbl.add map key value
+      end
+  | "remove" ->
+      if Hashtbl.mem map key then begin
+        Hashtbl.remove map key
+      end
+  | _ -> raise Not_found
+  in
+
   let get_big_map (cid, hash, mid) =
     (* Format.printf "get_big_map for %s %s %s@\n" cid hash mid; *)
     let ops = Db.get_operations_for cid in
@@ -654,7 +671,7 @@ let process rargs =
     | (op : op)::tl ->
       List.iter (fun bmd ->
         if String.equal bmd.mapid mid then
-        Jsontoflat.fold_map_diff map bmd.action bmd.key bmd.value)
+        fold_map_diff map bmd.action bmd.key bmd.value)
       op.bigmapdiffs;
       if not (String.equal op.hash hash) then
         iter_until_op tl
