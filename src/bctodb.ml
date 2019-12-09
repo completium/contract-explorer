@@ -143,7 +143,7 @@ module type Db = sig
   val open_logs : unit -> unit
   val close_logs : unit -> unit
   val write_contract_info : contract_info -> unit
-  val write_op : string -> op -> string -> string -> unit
+  val write_op : string -> op -> storage -> unit
   val get_storage_type : string -> string
   val get_storage_id_values_from_contract_id : string -> (string * string) list
   val write_storage_flat : (string * string) list -> unit
@@ -189,6 +189,8 @@ module Make_Db : Db = struct
       Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
                       id INTEGER PRIMARY KEY AUTOINCREMENT, \
                       hash VARCHAR(52) NOT NULL, \
+                      block_hash VARCHAR(52) NOT NULL, \
+                      bc VARCHAR(3) NOT NULL, \
                       contract_id VARCHAR(37) NOT NULL, \
                       timestamp date NOT NULL, \
                       source VARCHAR(37) NOT NULL, \
@@ -229,11 +231,12 @@ module Make_Db : Db = struct
   let diffs_to_string diffs = "["^(String.concat "," (List.map (fun d ->
       Safe.to_string (big_map_diff_to_yojson d)) diffs))^"]"
 
-  let write_op contract_id (op : op) storage balance =
+  let write_op contract_id (op : op) storage =
     let insert : string =
-      Printf.sprintf "INSERT INTO %s(hash, contract_id, timestamp, source, destination, parameters, bigmapdiffs, amount, storage, balance) VALUES('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');"
+      Printf.sprintf "INSERT INTO %s(hash, block_hash, bc, contract_id, timestamp, source, destination, parameters, bigmapdiffs, amount, storage, balance) VALUES('%s', '%s', 'tz', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');"
         table_ops
         op.hash
+        storage.hash
         contract_id
         op.timestamp
         op.source
@@ -241,8 +244,8 @@ module Make_Db : Db = struct
         op.parameters
         (diffs_to_string op.bigmapdiffs)
         op.amount
-        storage
-        balance
+        storage.storage
+        storage.balance
     in
     exec_cmd insert
 
@@ -505,8 +508,8 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Db : Db) (Po
   let write timestamp block_hash op contract_id =
     begin
       match Contract.mk timestamp block_hash contract_id with
-      | Some contract ->
-        Db.write_op contract_id op contract.storage contract.balance;
+      | Some storage ->
+        Db.write_op contract_id op storage;
       | None -> raise (ContractNotFound contract_id)
     end;
     if is_origination op && Pool.contains op.destination then
