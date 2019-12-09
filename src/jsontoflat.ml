@@ -426,7 +426,7 @@ let rec json_to_mvalue json : mvalue =
             | arg :: [] -> Moption (Some (json_to_mvalue arg))
             | _ -> raise (ExpectedNbargs ("Some",1)) end
         | "None" -> Moption None
-        | _ as p -> (print_string p;Munit)
+        | _ as p -> (print_endline p;Munit)
     else if List.mem "int" keys then
         let i = json |> member "int" |> to_string |> int_of_string in
         Mordered (Mint i)
