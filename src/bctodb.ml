@@ -339,7 +339,6 @@ module Make_Db : Db = struct
           exec_cmd insert
         end
       ) l
-
 end
 
 (* Tezos --------------------------------------------------------------------*)
@@ -366,11 +365,11 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
       let entries = json |> keys in
       if List.mem "big_map_diff" entries then
         List.map (fun bmd -> {
-          action = bmd |> member "action" |> to_string;
-          mapid = bmd |> member "big_map" |> to_string;
-          key = bmd |> member "key" |> Safe.to_string;
-          value = bmd |> member "value" |> Safe.to_string;
-        }) (json |> member "big_map_diff" |> to_list)
+              action = bmd |> member "action" |> to_string;
+              mapid = bmd |> member "big_map" |> to_string;
+              key = bmd |> member "key" |> Safe.to_string;
+              value = bmd |> member "value" |> Safe.to_string;
+            }) (json |> member "big_map_diff" |> to_list)
       else []
     else []
 
@@ -413,7 +412,7 @@ module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
                     parameters = "";
                     amount = "0";
                     bigmapdiffs = [];
-                }]
+                  }]
                 | _ -> acc
               ) acc
           ) acc
@@ -471,19 +470,36 @@ module type Pool = sig
   val is_not_empty : unit -> bool
   val contains : string -> bool
   val get_contract_head : string -> string option
+  val get_head_contracts : string -> string list
 end
 module Make_Pool (Contract : Contract) : Pool = struct
   let heads = ref (Hashtbl.create 0)
   let storages = ref (Hashtbl.create 0)
+  let contract_heads = ref (Hashtbl.create 0)
 
   let make l =
     heads := Hashtbl.create (List.length l);
-    List.iter (fun (cid,hd) -> Hashtbl.add !heads cid hd) l
+    List.iter (fun (cid,hd) ->
+        begin
+          Hashtbl.add !heads cid hd;
+          match hd with
+          | Some hd ->
+            begin
+              if not (Hashtbl.mem !contract_heads hd)
+              then Hashtbl.add !contract_heads hd [cid]
+              else
+                begin
+                  let ll = Hashtbl.find !contract_heads hd in
+                  Hashtbl.replace !contract_heads hd (cid::ll)
+                end
+            end
+          | _ -> ()
+        end) l
 
   let init timestamp hash =
     storages := Hashtbl.create (Hashtbl.length !heads);
     Hashtbl.iter (fun cid _ ->
-      match  Contract.mk timestamp hash cid with
+        match  Contract.mk timestamp hash cid with
         | Some v -> Hashtbl.add !storages cid v
         | _ -> assert false) !heads
 
@@ -502,6 +518,10 @@ module Make_Pool (Contract : Contract) : Pool = struct
 
   let contains contract_id = Hashtbl.mem !heads contract_id
   let get_contract_head contract_id = Hashtbl.find !heads contract_id
+  let get_head_contracts head =
+    if Hashtbl.mem !contract_heads head
+    then Hashtbl.find !contract_heads head
+    else []
 end
 
 (* Contract Explorer --------------------------------------------------------*)
@@ -511,19 +531,13 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Db : Db) (Po
   exception ContractNotFound of string
 
   let write timestamp block_hash op contract_id =
-    let contract_head = Pool.get_contract_head contract_id in
     begin
-    match contract_head with
-    | Some head when String.equal head block_hash ->
-      Pool.remove_contract contract_id
-    | _ -> begin
       match Contract.mk timestamp block_hash contract_id with
       | Some contract ->
         if String.equal op.destination contract_id then
           Db.write_storage contract_id contract;
         Db.write_op contract_id op;
       | None -> raise (ContractNotFound contract_id)
-      end
     end;
     if is_origination op && Pool.contains op.destination then
       Pool.remove_contract op.destination
@@ -533,13 +547,16 @@ module Make_ContractExplorer (Block : Block) (Contract : Contract) (Db : Db) (Po
     (* dump operations *)
     let data = Block.mk_data block.hash in
     print_string ("."); flush stdout;
+    (* remove contract when head is equal to current block *)
+    Pool.get_head_contracts block.hash
+    |> List.iter Pool.remove_contract;
     (* scan operations *)
     List.iter (fun op ->
-      if Pool.contains op.destination then
-        write data.timestamp block.hash op op.destination;
-      if Pool.contains op.source then
-        write data.timestamp block.hash op op.source
-    ) data.operations;
+        if Pool.contains op.destination then
+          write data.timestamp block.hash op op.destination;
+        if Pool.contains op.source then
+          write data.timestamp block.hash op op.source
+      ) data.operations;
     if Pool.is_not_empty()
     then explore block.previous
 
