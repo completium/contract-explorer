@@ -669,8 +669,8 @@ let process rargs =
     | (op : op)::tl ->
       List.iter (fun bmd ->
         if String.equal bmd.mapid mid then
-        fold_map_diff map bmd.action bmd.key bmd.value)
-      op.bigmapdiffs;
+          fold_map_diff map bmd.action bmd.key bmd.value
+      ) op.bigmapdiffs;
       if not (String.equal op.hash hash) then
         iter_until_hash tl
     | _ -> () in
