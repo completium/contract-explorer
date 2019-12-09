@@ -667,16 +667,16 @@ let process rargs =
     (* Format.printf "get_big_map for %s %s %s@\n" cid hash mid; *)
     let ops = Db.get_operations_for cid in
     let map = Hashtbl.create 0 in
-    let rec iter_until_op = function
+    let rec iter_until_hash = function
     | (op : op)::tl ->
       List.iter (fun bmd ->
         if String.equal bmd.mapid mid then
         fold_map_diff map bmd.action bmd.key bmd.value)
       op.bigmapdiffs;
       if not (String.equal op.hash hash) then
-        iter_until_op tl
+        iter_until_hash tl
     | _ -> () in
-    iter_until_op ops;
+    iter_until_hash ops;
     print_endline (Jsontoflat.to_sfval map)
   in
 
