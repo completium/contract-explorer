@@ -312,12 +312,12 @@ let pp_storage_json fmt st =
 (* Conversions --------------------------------------------------------------*)
 
 exception ExpectedNbargs of string * int
-exception ExpectedOrdered
+exception ExpectedOrdered of string
 exception InvalidPrim of string
 
 let amtype_to_ordered : amtype -> ordered_mtype = function
 | _, Tordered t -> t
-| _ -> raise ExpectedOrdered
+| _ as t -> raise (ExpectedOrdered (amtype_to_string t))
 
 let get_annot keys json =
 if List.mem "annots" keys then
@@ -381,6 +381,9 @@ let rec json_to_mtype (json : Safe.t) : amtype =
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] -> (get_annot keys json, Tlambda (snd (json_to_mtype arg1), snd (json_to_mtype arg2)))
             | _ -> raise (ExpectedNbargs ("lambda",2)) end
+        | "contract" -> begin match json |> member "args" |> to_list with
+            | arg :: [] -> (get_annot keys json, Tcontract (snd (json_to_mtype arg)))
+            | _ -> raise (ExpectedNbargs ("list",1)) end
         | _ as p -> raise (InvalidPrim p)
     else raise Not_found
 
