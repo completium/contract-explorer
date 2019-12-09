@@ -192,6 +192,7 @@ module Make_Db : Db = struct
                       block_hash VARCHAR(52) NOT NULL, \
                       bc VARCHAR(3) NOT NULL, \
                       contract_id VARCHAR(37) NOT NULL, \
+                      kind VARCHAR(3) NOT NULL, \
                       timestamp date NOT NULL, \
                       source VARCHAR(37) NOT NULL, \
                       destination VARCHAR(37) NOT NULL, \
@@ -233,11 +234,12 @@ module Make_Db : Db = struct
 
   let write_op contract_id (op : op) storage =
     let insert : string =
-      Printf.sprintf "INSERT INTO %s(hash, block_hash, bc, contract_id, timestamp, source, destination, parameters, bigmapdiffs, amount, storage, balance) VALUES('%s', '%s', 'tz', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');"
+      Printf.sprintf "INSERT INTO %s(hash, block_hash, bc, contract_id, kind, timestamp, source, destination, parameters, bigmapdiffs, amount, storage, balance) VALUES('%s', '%s', 'tz', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');"
         table_ops
         op.hash
         storage.hash
         contract_id
+        op.kind
         op.timestamp
         op.source
         op.destination
