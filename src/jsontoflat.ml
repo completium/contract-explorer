@@ -267,7 +267,7 @@ let pp_storage_json fmt st =
 
 exception ExpectedNbargs of int
 exception ExpectedOrdered
-exception InvalidPrim
+exception InvalidPrim of string
 
 let amtype_to_ordered : amtype -> ordered_mtype = function
 | _, Tordered t -> t
@@ -326,7 +326,7 @@ let rec json_to_mtype (json : Safe.t) : amtype =
             | arg :: [] -> (get_annot keys json, Toption (snd (json_to_mtype arg)))
             | _ -> raise (ExpectedNbargs 1) end
         | "unit" -> (get_annot keys json, Tunit)
-        | _ -> raise InvalidPrim
+        | _ as p -> raise (InvalidPrim p)
     else raise Not_found
 
 let rec json_to_mvalue json : mvalue =
