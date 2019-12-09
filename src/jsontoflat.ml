@@ -60,6 +60,7 @@ type mtype =
 | Tcontract of mtype
 | Toption of mtype
 | Tunit
+| Toperation
 | Tlist of mtype
 | Tmap of ordered_mtype * mtype
 | Tbigmap of ordered_mtype * mtype
@@ -90,6 +91,7 @@ let rec mtype_to_string = function
 | Toption t -> "OPTION of ("^(mtype_to_string t)^")"
 | Tordered Tbool -> "BOOL"
 | Tunit -> "UNIT"
+| Toperation -> "OPERATION"
 | Tcontract t -> "CONTRACT of ("^(mtype_to_string t)^")"
 | Tlist t -> "LIST of ("^(mtype_to_string t)^")"
 | Tmap (t1,t2) -> "MAP of ("^(mtype_to_string (Tordered t1))^") to ("^(mtype_to_string t2)^")"
@@ -118,6 +120,7 @@ type sftype =
 | Fkeyhash
 | Fmutez
 | Ftimestamp
+| Foperation
 | Fcontract of sftype
 | Foption of sftype
 | Flist of sftype
@@ -160,6 +163,7 @@ let rec sftype_to_string wp = function
 | Fkey -> "key"
 | Fkeyhash -> "keyhash"
 | Fmutez -> "mutez"
+| Foperation -> "operation"
 | Ftimestamp -> "timestamp"
 | Fcontract t -> with_paren wp ("contract of "^(sftype_to_string true t))
 | Faddress -> "address"
@@ -245,6 +249,7 @@ let rec pp_sftype_json fmt = function
 | Fmutez -> Format.fprintf fmt "{\"val\":\"mutez\"}"
 | Funit -> Format.fprintf fmt "{\"val\":\"unit\"}"
 | Ftimestamp -> Format.fprintf fmt "{\"val\":\"time\"}"
+| Foperation -> Format.fprintf fmt "{\"val\":\"operation\"}"
 | Fcontract t ->
     Format.fprintf fmt "{\"val\":\"contract\",\"args\":[%a]}"
     pp_sftype_json t
@@ -420,7 +425,7 @@ let rec json_to_mvalue json : mvalue =
             | arg :: [] -> Moption (Some (json_to_mvalue arg))
             | _ -> raise (ExpectedNbargs ("Some",1)) end
         | "None" -> Moption None
-        | _ -> Munit
+        | _ as p -> (print_string p;Munit)
     else if List.mem "int" keys then
         let i = json |> member "int" |> to_string |> int_of_string in
         Mordered (Mint i)
@@ -508,6 +513,7 @@ let rec mtyp_to_styp = function
 | Tordered Tkeyhash -> Fkeyhash
 | Tordered Tmutez -> Fmutez
 | Tordered Ttimestamp -> Ftimestamp
+| Toperation -> Foperation
 | Tunit -> Funit
 | Tcontract t -> Fcontract (mtyp_to_styp t)
 | Tlambda (t1,t2) -> Flambda (["a", mtyp_to_styp t1;"r",mtyp_to_styp t2])
