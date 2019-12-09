@@ -424,12 +424,19 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
         else acc
       ) ""
 
-  let mk_data chash =
-    let json = Rpc.url_to_json (Url.getContract "head" chash) in
+  let mk_data cid =
+    let json = Rpc.url_to_json (Url.getContract "head" cid) in
     let storage_type = json_to_storage_type json in
-    let storage_type_flat = Jsontoflat.flatten_typ storage_type in
+    let storage_type_flat =
+      try
+        Jsontoflat.flatten_typ storage_type
+      with
+      | e ->
+        Printf.eprintf "contract_id: %s " cid;
+        raise e
+    in
     {
-      id = chash;
+      id = cid;
       storage_type = storage_type;
       storage_type_flat = storage_type_flat;
       entries = [];
