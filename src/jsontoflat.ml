@@ -16,12 +16,18 @@ type ordered =
 | Mnat of int
 | Mstr of string
 | Mbytes of bytes
+| Maddress of string
+| Mkey of string
+| Mkeyhash of string
+| Mmutez of int
+| Mtimestamp of string
 [@@deriving yojson, show {with_path = false}]
 
 type mvalue =
 | Mordered of ordered
 | Mbool of bool
 | Munit
+| Mcontract of mvalue
 | Moption of mvalue option
 | Mpair of (mvalue * mvalue)
 | Mleft of mvalue
@@ -29,6 +35,7 @@ type mvalue =
 | Melt of (mvalue * mvalue)
 | Munion of (mvalue * mvalue)
 | Mlist of mvalue list
+| MLambda of mvalue list
 [@@deriving yojson, show {with_path = false}]
 
 (* Michelson type -----------------------------------------------------------*)
@@ -38,12 +45,18 @@ type ordered_mtype =
 | Tnat
 | Tstr
 | Tbytes
+| Taddress
+| Tkey
+| Tkeyhash
+| Tmutez
+| Ttimestamp
 [@@deriving yojson, show {with_path = false}]
 
 type mtype =
 | Tpair of amtype * amtype
 | Tunion of amtype * amtype
 | Tordered of ordered_mtype
+| Tcontract of mtype
 | Toption of mtype
 | Tbool
 | Tunit
@@ -51,6 +64,7 @@ type mtype =
 | Tmap of ordered_mtype * mtype
 | Tbigmap of ordered_mtype * mtype
 | Tset of ordered_mtype
+| Tlambda of mtype * mtype
 [@@deriving yojson, show {with_path = false}]
 and amtype = string option * mtype
 [@@deriving yojson, show {with_path = false}]
@@ -63,18 +77,25 @@ match amt with
 (* for debug purpose *)
 let rec mtype_to_string = function
 | Tpair (a1,a2) -> "PAIR of ("^(amtype_to_string a1)^") and ("^(amtype_to_string a2)^")"
+| Tunion (t1,t2) -> "UNION of ("^(amtype_to_string t1)^") to ("^(amtype_to_string t2)^")"
 | Tordered Tint -> "INT"
 | Tordered Tnat -> "NAT"
 | Tordered Tstr -> "STR"
+| Tordered Taddress -> "ADDRESS"
+| Tordered Tkey -> "KEY"
+| Tordered Tkeyhash -> "KEYHASH"
+| Tordered Tmutez -> "MUTEZ"
+| Tordered Ttimestamp -> "TIMESTAMP"
 | Tordered Tbytes -> "BYTES"
 | Toption t -> "OPTION of ("^(mtype_to_string t)^")"
 | Tbool -> "BOOL"
 | Tunit -> "UNIT"
+| Tcontract t -> "CONTRACT of ("^(mtype_to_string t)^")"
 | Tlist t -> "LIST of ("^(mtype_to_string t)^")"
 | Tmap (t1,t2) -> "MAP of ("^(mtype_to_string (Tordered t1))^") to ("^(mtype_to_string t2)^")"
 | Tbigmap (t1,t2) -> "BIG_MAP of ("^(mtype_to_string (Tordered t1))^") to ("^(mtype_to_string t2)^")"
 | Tset t -> "SET of ("^(mtype_to_string (Tordered t))^")"
-| _ as t -> Format.printf "%a" pp_mtype t;raise Not_found
+| Tlambda (t1,t2) -> "LAMBDA of ("^(mtype_to_string t1)^" -> "^(mtype_to_string t2)^")"
 and amtype_to_string amt =
 let types = fold_amtype [] amt in
 (String.concat "\n" (List.mapi (fun i t ->
@@ -92,6 +113,12 @@ type sftype =
 | Fbytes
 | Fbool
 | Funit
+| Faddress
+| Fkey
+| Fkeyhash
+| Fmutez
+| Ftimestamp
+| Fcontract of sftype
 | Foption of sftype
 | Flist of sftype
 | Fset of sftype
@@ -99,6 +126,7 @@ type sftype =
 | Fbigmap of sftype * sftype
 | Frecord of (string * sftype) list
 | For of (string * sftype) list
+| Flambda of (string * sftype) list
 [@@deriving yojson, show {with_path = false}]
 
 type sfval =
@@ -129,6 +157,13 @@ let rec sftype_to_string wp = function
 | Fbytes -> "bytes"
 | Fstr -> "string"
 | Fbool -> "bool"
+| Fkey -> "key"
+| Fkeyhash -> "keyhash"
+| Fmutez -> "mutez"
+| Ftimestamp -> "timestamp"
+| Fcontract t -> with_paren wp ("contract of "^(sftype_to_string true t))
+| Faddress -> "address"
+| Funit -> "unit"
 | Foption t -> with_paren wp ("option of "^(sftype_to_string true t))
 | Flist t -> with_paren wp ("list of "^(sftype_to_string true t))
 | Fmap (t1,t2) -> with_paren wp ("map of "^(sftype_to_string true t1)^" to "^(sftype_to_string true t2))
@@ -136,7 +171,7 @@ let rec sftype_to_string wp = function
 | Fset t -> with_paren wp ("set of "^(sftype_to_string true t))
 | Frecord l -> with_paren wp ("record { "^(String.concat "; "(List.map (fun (s,t) -> s^" : "^(sftype_to_string false t)) l))^" }")
 | For l -> with_paren wp (String.concat " or "(List.map (fun (s,t) -> with_paren true (s^" : "^(sftype_to_string false t))) l))
-| _ -> "unit"
+| Flambda l -> with_paren wp (String.concat " -> "(List.map (fun (s,t) -> with_paren true (s^" : "^(sftype_to_string false t))) l))
 
 let pp_sftype fmt t = pp_str fmt (sftype_to_string false t)
 
@@ -204,6 +239,15 @@ let rec pp_sftype_json fmt = function
 | Fnat -> Format.fprintf fmt "{ \"val\":\"nat\"}"
 | Fbytes -> Format.fprintf fmt "{\"val\":\"bytes\"}"
 | Fstr -> Format.fprintf fmt "{\"val\":\"str\"}"
+| Faddress -> Format.fprintf fmt "{\"val\":\"addr\"}"
+| Fkey -> Format.fprintf fmt "{\"val\":\"key\"}"
+| Fkeyhash -> Format.fprintf fmt "{\"val\":\"keyh\"}"
+| Fmutez -> Format.fprintf fmt "{\"val\":\"mutez\"}"
+| Funit -> Format.fprintf fmt "{\"val\":\"unit\"}"
+| Ftimestamp -> Format.fprintf fmt "{\"val\":\"time\"}"
+| Fcontract t ->
+    Format.fprintf fmt "{\"val\":\"contract\",\"args\":[%a]}"
+    pp_sftype_json t
 | Fbool -> Format.fprintf fmt "{\"val\":\"bool\"}"
 | Foption t ->
     Format.fprintf fmt "{\"val\":\"option\",\"args\":[%a]}"
@@ -228,7 +272,9 @@ let rec pp_sftype_json fmt = function
 | For l ->
     Format.fprintf fmt "{\"val\":\"or\",\"args\":[%a]}"
     (pp_list "," pp_named_sftype_json) l
-| _ -> Format.fprintf fmt "{\"val\":\"unit\"}"
+| Flambda l ->
+    Format.fprintf fmt "{\"val\":\"lambda\",\"args\":[%a]}"
+    (pp_list "," pp_named_sftype_json) l
 and pp_named_sftype_json fmt (s,t) =
     Format.fprintf fmt "{\"val\":\"%a\",\"args\":[%a]}"
     pp_str s
@@ -265,7 +311,7 @@ let pp_storage_json fmt st =
 
 (* Conversions --------------------------------------------------------------*)
 
-exception ExpectedNbargs of int
+exception ExpectedNbargs of string * int
 exception ExpectedOrdered
 exception InvalidPrim of string
 
@@ -289,33 +335,33 @@ let rec json_to_mtype (json : Safe.t) : amtype =
         | "pair" -> begin
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] -> (get_annot keys json, Tpair (json_to_mtype arg1, json_to_mtype arg2))
-            | _ -> raise (ExpectedNbargs 2) end
+            | _ -> raise (ExpectedNbargs ("pair",2)) end
         | "or" -> begin
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] -> (get_annot keys json, Tunion (json_to_mtype arg1, json_to_mtype arg2))
-            | _ -> raise (ExpectedNbargs 2) end
+            | _ -> raise (ExpectedNbargs ("or",2)) end
         | "big_map" -> begin
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] ->
                 (get_annot keys json, Tbigmap (
                     amtype_to_ordered (json_to_mtype arg1),
                     snd (json_to_mtype arg2)))
-            | _ -> raise (ExpectedNbargs 2) end
+            | _ -> raise (ExpectedNbargs ("big_map",2)) end
         | "map" -> begin
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] ->
                 (get_annot keys json, Tmap (
                     amtype_to_ordered (json_to_mtype arg1),
                     snd (json_to_mtype arg2)))
-            | _ -> raise (ExpectedNbargs 2) end
+            | _ -> raise (ExpectedNbargs ("map",2)) end
         | "list" -> begin
             match json |> member "args" |> to_list with
             | arg :: [] -> (get_annot keys json, Tlist (snd (json_to_mtype arg)))
-            | _ -> raise (ExpectedNbargs 1) end
+            | _ -> raise (ExpectedNbargs ("list",1)) end
         | "set" -> begin
             match json |> member "args" |> to_list with
             | arg :: [] -> (get_annot keys json, Tset (amtype_to_ordered (json_to_mtype arg)))
-            | _ -> raise (ExpectedNbargs 1) end
+            | _ -> raise (ExpectedNbargs ("set",1)) end
         | "bool" -> (get_annot keys json, Tbool)
         | "int" -> (get_annot keys json, Tordered Tint)
         | "nat" -> (get_annot keys json, Tordered Tnat)
@@ -324,8 +370,17 @@ let rec json_to_mtype (json : Safe.t) : amtype =
         | "option" -> begin
             match json |> member "args" |> to_list with
             | arg :: [] -> (get_annot keys json, Toption (snd (json_to_mtype arg)))
-            | _ -> raise (ExpectedNbargs 1) end
+            | _ -> raise (ExpectedNbargs ("option",1)) end
         | "unit" -> (get_annot keys json, Tunit)
+        | "key" -> (get_annot keys json, Tordered Tkey)
+        | "key_hash" -> (get_annot keys json, Tordered Tkeyhash)
+        | "mutez" -> (get_annot keys json, Tordered Tkeyhash)
+        | "timestamp" -> (get_annot keys json, Tordered Ttimestamp)
+        | "address" -> (get_annot keys json, Tordered Taddress)
+        | "lambda" ->  begin
+            match json |> member "args" |> to_list with
+            | arg1 :: arg2 :: [] -> (get_annot keys json, Tlambda (snd (json_to_mtype arg1), snd (json_to_mtype arg2)))
+            | _ -> raise (ExpectedNbargs ("lambda",2)) end
         | _ as p -> raise (InvalidPrim p)
     else raise Not_found
 
@@ -341,26 +396,26 @@ let rec json_to_mvalue json : mvalue =
         | "Pair" -> begin
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] -> Mpair (json_to_mvalue arg1, json_to_mvalue arg2)
-            | _ -> raise (ExpectedNbargs 2) end
+            | _ -> raise (ExpectedNbargs ("Pair",2)) end
         | "Left" -> begin
             match json |> member "args" |> to_list with
             | arg :: [] -> Mleft (json_to_mvalue arg)
-            | _ -> raise (ExpectedNbargs 1) end
+            | _ -> raise (ExpectedNbargs ("Left",1)) end
         | "Right" -> begin
             match json |> member "args" |> to_list with
             | arg :: [] -> Mright (json_to_mvalue arg)
-            | _ -> raise (ExpectedNbargs 1) end
+            | _ -> raise (ExpectedNbargs ("Right",1)) end
         | "Elt" -> begin
             match json |> member "args" |> to_list with
             | arg1 :: arg2 :: [] -> Melt (json_to_mvalue arg1, json_to_mvalue arg2)
-            | _ -> raise (ExpectedNbargs 2) end
+            | _ -> raise (ExpectedNbargs ("Elt",2)) end
         | "Unit" -> Munit
         | "False" -> Mbool false
         | "True" -> Mbool true
         | "Some" -> begin
             match json |> member "args" |> to_list with
             | arg :: [] -> Moption (Some (json_to_mvalue arg))
-            | _ -> raise (ExpectedNbargs 1) end
+            | _ -> raise (ExpectedNbargs ("Some",1)) end
         | "None" -> Moption None
         | _ -> Munit
     else if List.mem "int" keys then
@@ -416,6 +471,12 @@ let rec mval_to_sval = function
 | Mordered (Mbytes b) -> Velt (Bytes.to_string b)
 | Mordered (Mstr s) -> Velt s
 | Moption (Some v) -> Vlist [mval_to_sval v]
+| Mordered (Maddress s) -> Velt s
+| Mordered (Mkey s) -> Velt s
+| Mordered (Mkeyhash s) -> Velt s
+| Mordered (Mmutez i) -> Velt (string_of_int i)
+| Mordered (Mtimestamp s) -> Velt s
+| MLambda l -> Vlist (List.map mval_to_sval l)
 | Moption None -> Velt ""
 | Mbool b -> Velt (string_of_bool b)
 | Mlist l -> Vlist (List.map (fun v ->
@@ -439,6 +500,14 @@ let rec mtyp_to_styp = function
 | Tordered Tbytes -> Fbytes
 | Tordered Tstr -> Fstr
 | Tbool -> Fbool
+| Tordered Taddress -> Faddress
+| Tordered Tkey -> Fkey
+| Tordered Tkeyhash -> Fkeyhash
+| Tordered Tmutez -> Fmutez
+| Tordered Ttimestamp -> Ftimestamp
+| Tunit -> Funit
+| Tcontract t -> Fcontract (mtyp_to_styp t)
+| Tlambda (t1,t2) -> Flambda (["a", mtyp_to_styp t1;"r",mtyp_to_styp t2])
 | Toption t -> Foption (mtyp_to_styp t)
 | Tlist t -> Flist (mtyp_to_styp t)
 | Tmap (t1,t2) -> Fmap (mtyp_to_styp (Tordered t1), mtyp_to_styp t2)
@@ -458,7 +527,7 @@ let rec mtyp_to_styp = function
       | Some s -> (s,t)) lt in
   For (List.map (fun (s,t) -> s, mtyp_to_styp t) ln)
 | Tset t -> Fset (mtyp_to_styp (Tordered t))
-| _ -> Funit
+
 
 let mk_storage stype svalue : storage =
     let leafs = fold_type_value [] stype svalue in
