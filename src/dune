@@ -3,5 +3,5 @@
     (pps ppx_deriving.std ppx_deriving_yojson)
   )
   (modules bctodb jsontoflat sample)
-  (libraries curly sqlite3 ppx_deriving yojson ppx_deriving_yojson.runtime)
+  (libraries str curly sqlite3 ppx_deriving yojson ppx_deriving_yojson.runtime)
   (names     bctodb jsontoflat sample))

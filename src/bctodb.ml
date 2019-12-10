@@ -236,15 +236,20 @@ module Make_Db : Db = struct
   let close_logs () =
     ()
 
+  let protect str : string =
+    let pattern = "'" in
+    let re = Str.regexp pattern in
+    Str.global_replace re "''" str
+
   let write_contract_info (c : contract_info) =
     let insert : string =
       Printf.sprintf "INSERT OR REPLACE INTO %s VALUES('%s', '%s', '%s', '%s', '%s', NULL);"
         table_info
         c.id
-        c.storage_type
-        c.storage_type_flat
+        (protect c.storage_type)
+        (protect c.storage_type_flat)
         (List.fold_left (fun (accu : string) (x : string) -> accu ^ " " ^ x) "" c.entries)
-        c.script
+        (protect c.script)
     in
     exec_cmd insert
 
@@ -286,10 +291,10 @@ module Make_Db : Db = struct
         op.timestamp
         op.source
         op.destination
-        op.parameters
-        (diffs_to_string op.bigmapdiffs)
+        (protect op.parameters)
+        (protect (diffs_to_string op.bigmapdiffs))
         op.amount
-        storage.storage
+        (protect storage.storage)
         storage.balance
     in
     exec_cmd insert
@@ -353,7 +358,7 @@ module Make_Db : Db = struct
           let insert : string =
             Printf.sprintf "UPDATE %s SET storage_flat = '%s' WHERE hash = '%s';"
               table_ops
-              value
+              (protect value)
               id
           in
           exec_cmd insert
@@ -503,7 +508,6 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
       ) ""
 
   let mk_data cid =
-    Printf.eprintf "cid: %s\n" cid;
     let json = Rpc.url_to_json (Url.getContract "head" cid) in
     let storage_type = json_to_storage_type json in
     let storage_type_flat = Jsontoflat.flatten_typ storage_type in

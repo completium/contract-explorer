@@ -17,10 +17,16 @@ let () =
   | Rc.OK -> print_endline "Ok"
   | r -> prerr_endline (Rc.to_string r); prerr_endline (errmsg db)
 
+  let protect str : string =
+    let pattern = "'" in
+    let re = Str.regexp pattern in
+    Str.global_replace re "''" str
 
 let main () =
-  print_endline Jsontoflat.storage;
+  let input = "toto'ta'ta" in
+  print_endline (protect input)
+  (* print_endline Jsontoflat.storage;
   print_endline Jsontoflat.storage_type;
-  Jsontoflat.flatten_storage Jsontoflat.storage_type Jsontoflat.storage
+  Jsontoflat.flatten_storage Jsontoflat.storage_type Jsontoflat.storage *)
 
 let _ = main ()
