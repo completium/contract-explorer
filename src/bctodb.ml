@@ -10,8 +10,8 @@ type command =
   | Sync
   | AddContract of string
   | FillStorageFlat
-  | GetBigMap of string * string * string
-  | None
+  | GetBigMap of string * string * string option
+  | Unknown
 [@@deriving show {with_path = false}]
 
 module MOptions = struct
@@ -30,8 +30,6 @@ module MOptions = struct
   let path = ref "."
   let getPath _ = !path
   let setPath s = path := s
-
-  let cmd : command ref = ref None
 
 end
 
@@ -647,41 +645,48 @@ let process rargs =
   in
 
   let fold_map_diff map action key value =
-  match action with
-  | "alloc" when (String.equal key "null") -> ()
-  | "alloc" -> Hashtbl.add map key value
-  | "update" | "insert" ->
+    match action with
+    | "alloc" when (String.equal key "null") -> ()
+    | "alloc" -> Hashtbl.add map key value
+    | "update" | "insert" ->
       if Hashtbl.mem map key then
         Hashtbl.replace map key value
       else
         Hashtbl.add map key value
-  | "remove" ->
+    | "remove" ->
       if Hashtbl.mem map key then
         Hashtbl.remove map key
-  | _ -> raise Not_found
+    | _ -> raise Not_found
   in
 
-  let get_big_map (cid, hash, mid) =
+  let get_big_map (cid, mid, hash) =
     (* Format.printf "get_big_map for %s %s %s@\n" cid hash mid; *)
     let ops = Db.get_operations_for cid in
     let map = Hashtbl.create 0 in
     let rec iter_until_hash = function
-    | (op : op)::tl ->
-      List.iter (fun bmd ->
-        if String.equal bmd.mapid mid then
-          fold_map_diff map bmd.action bmd.key bmd.value
-      ) op.bigmapdiffs;
-      if not (String.equal op.hash hash) then
-        iter_until_hash tl
-    | _ -> () in
+      | (op : op)::tl ->
+        List.iter (fun bmd ->
+            if String.equal bmd.mapid mid then
+              fold_map_diff map bmd.action bmd.key bmd.value
+          ) op.bigmapdiffs;
+        begin
+          match hash with
+          | Some hash when String.equal op.hash hash -> ()
+          | _ -> iter_until_hash tl
+        end
+      | _ -> () in
     iter_until_hash ops;
     print_endline (Jsontoflat.to_sfval map)
   in
 
   let cmd =
     match List.rev !rargs with
-    | ["get-big-map"; cid; hash; mid ] -> GetBigMap (cid, hash, mid)
-    | _ -> !MOptions.cmd
+    | ["add-contract"; cid]            -> AddContract cid
+    | ["sync"]                         -> Sync
+    | ["fill-storage-flat"]            -> FillStorageFlat
+    | ["get-big-map"; cid; mid; hash ] -> GetBigMap (cid, mid, Some hash)
+    | ["get-big-map"; cid; mid]        -> GetBigMap (cid, mid, None)
+    | _                                -> Unknown
   in
 
   Db.open_logs ();
@@ -690,8 +695,8 @@ let process rargs =
     | AddContract arg            -> add_contract arg
     | Sync                       -> sync ()
     | FillStorageFlat            -> fill_storage_flat ()
-    | GetBigMap (cid, hash, mid) -> get_big_map (cid, hash, mid)
-    | _ -> print_endline "unknown command"
+    | GetBigMap (cid, mid, hash) -> get_big_map (cid, mid, hash)
+    | Unknown                       -> print_endline "unknown command"
   end;
   Db.close_logs()
 
@@ -699,9 +704,6 @@ let main () =
   let print_version () = Format.printf "%s@." version; exit 0 in
   let rargs = ref [] in
   let arg_list = Arg.align [
-      "--add-contract", Arg.String (fun s -> MOptions.cmd := AddContract s), "<contract_id> Add contract <contract_id>";
-      "--sync", Arg.Unit (fun _ -> MOptions.cmd := Sync), " Synchronise database";
-      "--fill-storage-flat", Arg.Unit (fun _ -> MOptions.cmd := FillStorageFlat), " Fill storage flat";
       "--address", Arg.String (MOptions.setAddress), "<address> Set address";
       "--branch", Arg.String (MOptions.setBranch), "<branch> Set branch";
       "--port", Arg.String (MOptions.setPort), "<port> Set port";
@@ -710,10 +712,13 @@ let main () =
       "--", Arg.Rest (fun arg -> rargs := arg::!rargs), ""
     ] in
   let arg_usage = String.concat "\n" [
-      "usage : bctojson [OPTIONS] (-- CMD args)";
+      "usage : bctojson [OPTIONS] -- CMD";
       "";
       "Available commands:";
-      "  get-big-map <contract_id> <hash> <big_map_id>";
+      "  add-contract <contract_id>\t\t\tAdd contract <contract_id>";
+      "  sync\t\t\t\t\t\tSynchronise database";
+      "  fill-storage-flat\t\t\t\tFill storage flat";
+      "  get-big-map <contract_id> <big_map_id> <hash>?\tGet big map";
       "";
       "Available options:";
     ] in
