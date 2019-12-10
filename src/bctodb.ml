@@ -652,14 +652,14 @@ let process rargs =
     match action with
     | "alloc" when (String.equal key "null") -> ()
     | "alloc" -> Hashtbl.add map key value
+    | "remove" | "update" when (String.equal value "null")->
+      if Hashtbl.mem map key then
+        Hashtbl.remove map key
     | "update" | "insert" ->
       if Hashtbl.mem map key then
         Hashtbl.replace map key value
       else
         Hashtbl.add map key value
-    | "remove" ->
-      if Hashtbl.mem map key then
-        Hashtbl.remove map key
     | _ -> raise Not_found
   in
 
