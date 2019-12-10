@@ -11,6 +11,7 @@ type command =
   | AddContract of string
   | FillStorageFlat
   | GetBigMap of string * string * string option
+  | AddNewContracts
   | Unknown
 [@@deriving show {with_path = false}]
 
@@ -127,9 +128,10 @@ let cmp_contracts c1 c2 =
 (* factories ----------------------------------------------------------------*)
 
 module type Url = sig
-  val getBlock    : string -> string
-  val getHead     : unit   -> string
-  val getContract : string -> string -> string
+  val getBlock     : string -> string
+  val getHead      : unit   -> string
+  val getContract  : string -> string -> string
+  val getContracts : string -> string
 end
 
 module type Block = sig
@@ -375,6 +377,7 @@ module Make_TzURL (Info : BCinfo) : Url = struct
   let getBlock str = (Info.getIp()^":"^Info.getPort()^"/chains/"^Info.getBranch()^"/blocks/"^str)
   let getHead () = getBlock "head"
   let getContract b c = (getBlock b)^"/context/contracts/"^c
+  let getContracts b = (getBlock b)^"/context/contracts"
 end
 
 module Make_TzBlock (Url : Url) (Rpc : RPC) : Block = struct
@@ -608,7 +611,8 @@ let process rargs =
     let module Block = Make_TzBlock (Url) (Rpc) in
     let module Contract = Make_TzContract (Url) (Block) (Rpc) in
     let cinfo = Contract.mk_data contract_id in
-    Db.write_contract_info cinfo
+    Db.write_contract_info cinfo;
+    Format.printf "%s added@\n" contract_id
   in
 
   let sync _ =
@@ -679,6 +683,26 @@ let process rargs =
     print_endline (Jsontoflat.to_sfval map)
   in
 
+  let add_new_contracts _ =
+    let module TzInfo : BCinfo = struct
+      let getIp () = MOptions.getAddress()
+      let getPort () = MOptions.getPort()
+      let getBranch () = MOptions.getBranch()
+    end in
+    let module Url = Make_TzURL (TzInfo) in
+    let module Block = Make_TzBlock (Url) (Rpc) in
+    let json = Rpc.url_to_json (Url.getContracts "head") in
+    let bc_contracts =
+      match json with
+      | `List l -> List.map (fun x -> match x with | `String s -> s | _ -> assert false) l
+      | _ -> []
+    in
+    let db_contracts = Db.get_contract_ids () in
+    let bc_contracts = List.filter (fun s -> String.length s > 3 && String.equal (String.sub s 0 3) "KT1" && not (List.mem s db_contracts)) bc_contracts in
+    Format.printf "add %d contracts@\n" (List.length bc_contracts);
+    List.iter add_contract bc_contracts
+  in
+
   let cmd =
     match List.rev !rargs with
     | ["add-contract"; cid]            -> AddContract cid
@@ -686,6 +710,7 @@ let process rargs =
     | ["fill-storage-flat"]            -> FillStorageFlat
     | ["get-big-map"; cid; mid; hash ] -> GetBigMap (cid, mid, Some hash)
     | ["get-big-map"; cid; mid]        -> GetBigMap (cid, mid, None)
+    | ["add-new-contracts"]            -> AddNewContracts
     | _                                -> Unknown
   in
 
@@ -696,7 +721,8 @@ let process rargs =
     | Sync                       -> sync ()
     | FillStorageFlat            -> fill_storage_flat ()
     | GetBigMap (cid, mid, hash) -> get_big_map (cid, mid, hash)
-    | Unknown                       -> print_endline "unknown command"
+    | AddNewContracts            -> add_new_contracts ()
+    | Unknown                    -> print_endline "unknown command"
   end;
   Db.close_logs()
 
@@ -719,6 +745,7 @@ let main () =
       "  sync\t\t\t\t\t\tSynchronise database";
       "  fill-storage-flat\t\t\t\tFill storage flat";
       "  get-big-map <contract_id> <big_map_id> <hash>?\tGet big map";
+      "  add-new-contracts\t\t\tAdd all missed/new contracts in database";
       "";
       "Available options:";
     ] in
