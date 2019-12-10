@@ -566,7 +566,14 @@ let flatten_storage typ storage =
   Format.asprintf "%a" pp_vals_json storage
 
 let flatten_typ typ =
-  let storage_type = Safe.from_string typ in
+  let storage_type =
+    try
+      Safe.from_string typ
+    with
+    | e ->
+      Printf.eprintf "flatten_typ error: %s@\n" typ;
+      raise e
+  in
   let stype = json_to_mtype storage_type in
   let storage = mk_storage_typ stype in
   Format.asprintf "%a" pp_typs_json storage

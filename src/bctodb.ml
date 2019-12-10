@@ -51,7 +51,14 @@ module Rpc : RPC = struct
     | Ok x -> x.Curly.Response.body
     | Error e -> raise (RPCNotFound(url,e))
 
-  let url_to_json url = Safe.from_string (url_to_string url)
+  let url_to_json url =
+    let input = url_to_string url in
+    try
+      Safe.from_string input
+    with
+    | e ->
+      Printf.eprintf "error: %s\n" input;
+      raise e
 
 end
 
@@ -110,6 +117,7 @@ type contract_info = {
   storage_type : string;
   storage_type_flat : string;
   entries : string list;
+  script : string;
 }
 [@@deriving yojson, show {with_path = false}]
 
@@ -164,7 +172,7 @@ end
 module Make_Db : Db = struct
 
   let db = Sqlite3.db_open "bc.db"
-  let table_info     = "contracts_info"
+  let table_info     = "contracts"
   let table_ops      = "operations"
 
   let exec_cmd cmd =
@@ -186,6 +194,7 @@ module Make_Db : Db = struct
                       storage_type text NOT NULL, \
                       storage_type_flat text, \
                       entries text NOT NULL, \
+                      script text NOT NULL, \
                       head text \
                       );"
 
@@ -229,12 +238,13 @@ module Make_Db : Db = struct
 
   let write_contract_info (c : contract_info) =
     let insert : string =
-      Printf.sprintf "INSERT OR REPLACE INTO %s VALUES('%s', '%s', '%s', '%s', NULL);"
+      Printf.sprintf "INSERT OR REPLACE INTO %s VALUES('%s', '%s', '%s', '%s', '%s', NULL);"
         table_info
         c.id
         c.storage_type
         c.storage_type_flat
         (List.fold_left (fun (accu : string) (x : string) -> accu ^ " " ^ x) "" c.entries)
+        c.script
     in
     exec_cmd insert
 
@@ -252,7 +262,13 @@ module Make_Db : Db = struct
     match str with
     | Some str ->
       begin
-        let json =  Safe.from_string str in
+        let json =
+          try
+            Safe.from_string str
+          with
+          | e ->
+            Printf.eprintf "error: %s\n" str;
+            raise e in
         match json with
         | `List l -> List.map to_diff l;
         | _ -> assert false;
@@ -478,22 +494,32 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
         else acc
       ) ""
 
+  let json_to_script json =
+    json |> member "script" |> member "code" |> to_list |> List.fold_left (fun acc code ->
+        let prim = code |> member "prim" |> to_string in
+        if String.equal prim "code" then
+          code |> member "args" |> Safe.to_string
+        else acc
+      ) ""
+
   let mk_data cid =
+    Printf.eprintf "cid: %s\n" cid;
     let json = Rpc.url_to_json (Url.getContract "head" cid) in
     let storage_type = json_to_storage_type json in
-    let storage_type_flat =
+    let storage_type_flat = Jsontoflat.flatten_typ storage_type in
+    let script =
       try
-        Jsontoflat.flatten_typ storage_type
+        json_to_script json
       with
-      | e ->
-        Printf.eprintf "contract_id: %s " cid;
-        raise e
+      | _ ->
+        "no_script"
     in
     {
       id = cid;
       storage_type = storage_type;
       storage_type_flat = storage_type_flat;
       entries = [];
+      script = script;
     }
 
 end
@@ -612,7 +638,7 @@ let process rargs =
     let module Contract = Make_TzContract (Url) (Block) (Rpc) in
     let cinfo = Contract.mk_data contract_id in
     Db.write_contract_info cinfo;
-    Format.printf "%s added@\n" contract_id
+    (* Format.printf "%s added@\n" contract_id *)
   in
 
   let sync _ =
