@@ -483,11 +483,28 @@ module Make_TzContract (Url : Url) (Block : Block) (Rpc : RPC) : Contract = stru
 
   let mk timestamp bhash chash =
     try
-      let json = Rpc.url_to_json (Url.getContract bhash chash) in (Some {
+      let json = Rpc.url_to_json (Url.getContract bhash chash) in
+      let storage =
+        if (json |> keys |> List.mem "script")
+        then
+          begin
+            let json2 = json  |> member "script" in
+            if (json2 |> keys |> List.mem "storage")
+            then json2 |> member "storage" |> Safe.to_string
+            else "no_storage"
+          end
+        else "no_storage"
+      in
+      let balance =
+        if (json |> keys |> List.mem "balance")
+        then json |> member "balance" |> Safe.to_string
+        else "no_balance"
+      in
+      (Some {
           timestamp = timestamp;
           hash = bhash;
-          storage = json |> member "script" |> member "storage" |> Safe.to_string;
-          balance = json |> member "balance" |> to_string;
+          storage = storage;
+          balance = balance;
         })
     with _ -> None
 
