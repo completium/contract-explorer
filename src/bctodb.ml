@@ -596,14 +596,14 @@ end
 
 module Make_ContractExplorer (Block : Block) (Contract : Contract) (Db : Db) (Pool : Pool) = struct
 
-  exception ContractNotFound of string
+  exception ContractNotFound of string * string * string * string
 
   let write timestamp block_hash op contract_id =
     begin
       match Contract.mk timestamp block_hash contract_id with
       | Some storage ->
         Db.write_op contract_id op storage;
-      | None -> raise (ContractNotFound contract_id)
+      | None -> raise (ContractNotFound (timestamp, block_hash, op.hash, contract_id))
     end;
     if is_origination op && Pool.contains op.destination then
       Pool.remove_contract op.destination
