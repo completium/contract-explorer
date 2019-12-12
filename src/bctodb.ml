@@ -182,6 +182,7 @@ module Make_Db : Db = struct
 
   let create_tables () =
     create_table_info ();
+    create_table_logs ();
     create_table_ops ()
 
   let open_logs () =
