@@ -34,47 +34,6 @@ module MOptions = struct
 
 end
 
-
-(* Tools --------------------------------------------------------------------*)
-
-module type RPC = sig
-  exception RPCNotFound of string * (Curly.Error.t)
-  val url_to_string : string -> string
-  val url_to_json : string -> Safe.t
-end
-module Rpc : RPC = struct
-
-  exception RPCNotFound of string * (Curly.Error.t)
-
-  let url_to_string url =
-    match Curly.(run (Request.make ~url:url ~meth:`GET ())) with
-    | Ok x -> x.Curly.Response.body
-    | Error e -> raise (RPCNotFound(url,e))
-
-  let url_to_json url =
-    let input = url_to_string url in
-    try
-      Safe.from_string input
-    with
-    | e ->
-      Printf.eprintf "error: %s\n" input;
-      raise e
-
-end
-
-module type BCinfo = sig
-  val getIp     : unit -> string
-  val getPort   : unit -> string
-  val getBranch : unit -> string
-end
-
-(* pp functions -------------------------------------------------------------*)
-
-let pp_list sep pp =
-  Format.pp_print_list
-    ~pp_sep:(fun fmt () -> Format.fprintf fmt "%(%)" sep)
-    pp
-
 (* BC types -----------------------------------------------------------------*)
 
 type block_id = {
@@ -133,25 +92,6 @@ let cmp_contracts c1 c2 =
   (c1.storage = c2.storage) &&
   (c1.balance = c2.balance)
 
-(* factories ----------------------------------------------------------------*)
-
-module type Url = sig
-  val getBlock     : string -> string
-  val getHead      : unit   -> string
-  val getContract  : string -> string -> string
-  val getContracts : string -> string
-end
-
-module type Block = sig
-  val mk_id   : string -> block_id
-  val mk_data : string -> block_data
-end
-
-module type Contract = sig
-  val mk : string -> string -> string -> storage option
-  val mk_data : string -> contract_info
-end
-
 (* output module ------------------------------------------------------------*)
 
 module type Db = sig
@@ -160,6 +100,7 @@ module type Db = sig
   val close_logs : unit -> unit
   val write_contract_info : contract_info -> unit
   val write_op : string -> op -> storage -> unit
+  val write_log : string -> unit
   val get_storage_type : string -> string
   val get_storage_id_values_from_contract_id : string -> (string * string) list
   val write_storage_flat : (string * string) list -> unit
@@ -174,6 +115,7 @@ module Make_Db : Db = struct
   let db = Sqlite3.db_open "bc.db"
   let table_info     = "contracts"
   let table_ops      = "operations"
+  let table_logs     = "logs"
 
   let exec_cmd cmd =
     match Sqlite3.exec db cmd with
@@ -223,6 +165,18 @@ module Make_Db : Db = struct
                       );"
 
         table_ops
+    in
+    exec_cmd create_table_sql
+
+  let create_table_logs () =
+    let create_table_sql =
+      Printf.sprintf "CREATE TABLE IF NOT EXISTS %s ( \
+                      id INTEGER PRIMARY KEY AUTOINCREMENT, \
+                      timestamp date NOT NULL, \
+                      request text NOT_NULL \
+                      );"
+
+        table_logs
     in
     exec_cmd create_table_sql
 
@@ -296,6 +250,14 @@ module Make_Db : Db = struct
         op.amount
         (protect storage.storage)
         storage.balance
+    in
+    exec_cmd insert
+
+  let write_log (r : string) =
+    let insert : string =
+      Printf.sprintf "INSERT INTO %s(timestamp, request) VALUES(datetime('now'), '%s');"
+        table_logs
+        (protect r)
     in
     exec_cmd insert
 
@@ -390,6 +352,68 @@ module Make_Db : Db = struct
       ) with
     | Sqlite3.Rc.OK -> List.rev !l
     | _ -> assert false
+end
+
+(* Tools --------------------------------------------------------------------*)
+
+module type RPC = sig
+  exception RPCNotFound of string * (Curly.Error.t)
+  val url_to_string : string -> string
+  val url_to_json : string -> Safe.t
+end
+module Rpc (Db : Db) : RPC = struct
+
+  exception RPCNotFound of string * (Curly.Error.t)
+
+  let url_to_string url =
+    Db.write_log url;
+    match Curly.(run (Request.make ~url:url ~meth:`GET ())) with
+    | Ok x -> x.Curly.Response.body
+    | Error e -> raise (RPCNotFound(url,e))
+
+  let url_to_json url =
+    let input = url_to_string url in
+    try
+      Safe.from_string input
+    with
+    | e ->
+      Printf.eprintf "error: %s\n" input;
+      raise e
+
+end
+
+module type BCinfo = sig
+  val getIp     : unit -> string
+  val getPort   : unit -> string
+  val getBranch : unit -> string
+end
+
+(* pp functions -------------------------------------------------------------*)
+
+let pp_list sep pp =
+  Format.pp_print_list
+    ~pp_sep:(fun fmt () -> Format.fprintf fmt "%(%)" sep)
+    pp
+
+
+
+(* factories ----------------------------------------------------------------*)
+
+module type Url = sig
+  val getBlock     : string -> string
+  val getHead      : unit   -> string
+  val getContract  : string -> string -> string
+  val getContracts : string -> string
+end
+
+module type Block = sig
+  val mk_id   : string -> block_id
+  val mk_data : string -> block_data
+end
+
+module type Contract = sig
+  val mk : string -> string -> string -> storage option
+  val mk_data : string -> contract_info
 end
 
 (* Tezos --------------------------------------------------------------------*)
@@ -655,6 +679,7 @@ let process rargs =
       let getBranch () = MOptions.getBranch()
     end in
     let module Url = Make_TzURL (TzInfo) in
+    let module Rpc = Rpc (Db) in
     let module Block = Make_TzBlock (Url) (Rpc) in
     let module Contract = Make_TzContract (Url) (Block) (Rpc) in
     let cinfo = Contract.mk_data contract_id in
@@ -669,6 +694,7 @@ let process rargs =
       let getBranch () = MOptions.getBranch()
     end in
     let module Url = Make_TzURL (TzInfo) in
+    let module Rpc = Rpc (Db) in
     let module Block = Make_TzBlock (Url) (Rpc) in
     let module Contract = Make_TzContract (Url) (Block) (Rpc) in
     let module Pool = Make_Pool (Contract) in
@@ -737,6 +763,7 @@ let process rargs =
       let getBranch () = MOptions.getBranch()
     end in
     let module Url = Make_TzURL (TzInfo) in
+    let module Rpc = Rpc (Db) in
     let module Block = Make_TzBlock (Url) (Rpc) in
     let json = Rpc.url_to_json (Url.getContracts "head") in
     let bc_contracts =
