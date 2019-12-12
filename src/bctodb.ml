@@ -32,6 +32,7 @@ module MOptions = struct
   let getPath _ = !path
   let setPath s = path := s
 
+  let with_log = ref false
 end
 
 (* BC types -----------------------------------------------------------------*)
@@ -255,12 +256,15 @@ module Make_Db : Db = struct
     exec_cmd insert
 
   let write_log (r : string) =
-    let insert : string =
-      Printf.sprintf "INSERT INTO %s(timestamp, request) VALUES(datetime('now'), '%s');"
-        table_logs
-        (protect r)
-    in
-    exec_cmd insert
+    if !MOptions.with_log
+    then
+      let insert : string =
+        Printf.sprintf "INSERT INTO %s(timestamp, request) VALUES(datetime('now'), '%s');"
+          table_logs
+          (protect r)
+      in
+      exec_cmd insert
+    else ()
 
   let get_contract_ids () : string list =
     let select_sql = Printf.sprintf "SELECT id FROM %s;" table_info in
@@ -808,6 +812,7 @@ let main () =
       "--address", Arg.String (MOptions.setAddress), "<address> Set address";
       "--branch", Arg.String (MOptions.setBranch), "<branch> Set branch";
       "--port", Arg.String (MOptions.setPort), "<port> Set port";
+      "--with-log", Arg.Set (MOptions.with_log), " With logs";
       "-v", Arg.Unit (fun () -> print_version ()), " Show version number and exit";
       "--version", Arg.Unit (fun () -> print_version ()), " Same as -v";
       "--", Arg.Rest (fun arg -> rargs := arg::!rargs), ""
