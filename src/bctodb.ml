@@ -11,6 +11,7 @@ type command =
   | AddContract of string
   | FillStorageFlat
   | GetBigMap of string * string * string option
+  | AddAllContracts
   | AddNewContracts
   | Unknown
 [@@deriving show {with_path = false}]
@@ -761,7 +762,7 @@ let process rargs =
     print_endline (Jsontoflat.to_sfval map)
   in
 
-  let add_new_contracts _ =
+  let add_new_contracts arg =
     let module TzInfo : BCinfo = struct
       let getIp () = MOptions.getAddress()
       let getPort () = MOptions.getPort()
@@ -776,7 +777,11 @@ let process rargs =
       | `List l -> List.map (fun x -> match x with | `String s -> s | _ -> assert false) l
       | _ -> []
     in
-    let db_contracts = Db.get_contract_ids () in
+    let db_contracts =
+      match arg with
+      | `All -> []
+      | `New -> Db.get_contract_ids ()
+    in
     let bc_contracts = List.filter (fun s -> String.length s > 3 && String.equal (String.sub s 0 3) "KT1" && not (List.mem s db_contracts)) bc_contracts in
     Format.printf "add %d contracts@\n" (List.length bc_contracts);
     List.iter add_contract bc_contracts
@@ -789,6 +794,7 @@ let process rargs =
     | ["fill-storage-flat"]            -> FillStorageFlat
     | ["get-big-map"; cid; mid; hash ] -> GetBigMap (cid, mid, Some hash)
     | ["get-big-map"; cid; mid]        -> GetBigMap (cid, mid, None)
+    | ["add-all-contracts"]            -> AddAllContracts
     | ["add-new-contracts"]            -> AddNewContracts
     | _                                -> Unknown
   in
@@ -800,7 +806,8 @@ let process rargs =
     | Sync                       -> sync ()
     | FillStorageFlat            -> fill_storage_flat ()
     | GetBigMap (cid, mid, hash) -> get_big_map (cid, mid, hash)
-    | AddNewContracts            -> add_new_contracts ()
+    | AddAllContracts            -> add_new_contracts `All
+    | AddNewContracts            -> add_new_contracts `New
     | Unknown                    -> print_endline "unknown command"
   end;
   Db.close_logs()
@@ -825,6 +832,7 @@ let main () =
       "  sync\t\t\t\t\t\tSynchronise database";
       "  fill-storage-flat\t\t\t\tFill storage flat";
       "  get-big-map <contract_id> <big_map_id> <hash>?\tGet big map";
+      "  add-all-contracts\t\t\tAdd all contracts in database";
       "  add-new-contracts\t\t\tAdd all missed/new contracts in database";
       "";
       "Available options:";
